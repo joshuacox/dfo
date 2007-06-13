@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<UserCombinePreferences filename="/home/mann/DesktopFlickrOrganizer/DesktopFlickrOrganizer.mds">
+  <Files>
+    <File filename="Welcome" />
+    <File filename="./DeskFlickrUI.cs" />
+    <File filename="./PhotoEditorUI.cs" />
+    <File filename="./FirstTimeAuthentication.cs" />
+  </Files>
+  <Views>
+    <ViewMemento Id="MonoDevelop.Ide.Gui.Pads.ProjectPad">
+      <TreeView>
+        <Node expanded="True">
+          <Node name="DesktopFlickrOrganizer" expanded="True">
+            <Node name="PhotoEditorUI.cs" expanded="False" selected="True" />
+          </Node>
+        </Node>
+      </TreeView>
+    </ViewMemento>
+    <ViewMemento Id="MonoDevelop.Ide.Gui.Pads.ClassPad">
+      <TreeView>
+        <Node expanded="True">
+          <Node name="DesktopFlickrOrganizer" expanded="True">
+            <Node name="PersistentInformation" expanded="True" />
+          </Node>
+        </Node>
+      </TreeView>
+    </ViewMemento>
+  </Views>
+  <Properties>
+    <Properties>
+      <Property key="ActiveConfiguration" value="Debug" />
+      <Property key="ActiveWindow" value="/home/mann/DesktopFlickrOrganizer/PhotoEditorUI.cs" />
+    </Properties>
+  </Properties>
+</UserCombinePreferences>
