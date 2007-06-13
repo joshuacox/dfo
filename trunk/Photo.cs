@@ -13,6 +13,7 @@ using System.Collections;
 		private int isfamily;
 		private string lastupdate;
 		private Gdk.Pixbuf thumbnail;
+		// these are string tags, not from class Tag.
 		private ArrayList tags;
 		
 		public Photo(string id, string title, string desc, int license,
@@ -66,7 +67,7 @@ using System.Collections;
       get {
         if (tags == null)
           return "";
-        return String.Join(" ", (string[]) tags.ToArray(typeof(string)));
+        return Utils.GetTagString(tags);
       }
 		}
 		

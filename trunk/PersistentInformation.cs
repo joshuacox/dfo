@@ -382,11 +382,13 @@ using Mono.Data.SqliteClient;
 		public ArrayList GetAllTags() {
 		  ArrayList tags = new ArrayList();
 		  IDbCommand dbcmd = dbcon.CreateCommand();
-		  dbcmd.CommandText = "select distinct tag from tag;";
+		  dbcmd.CommandText = "select tag, count(photoid) from tag group by tag;";
 		  IDataReader reader = dbcmd.ExecuteReader();
 		  while(reader.Read()) {
-		    tags.Add(reader.GetString(0));
+		    Tag t = new Tag(reader.GetString(0), reader.GetInt32(1));
+		    tags.Add(t);
 		  }
+		  tags.Sort();
 		  return tags;
 		}
 		

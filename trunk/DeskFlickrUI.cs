@@ -33,6 +33,9 @@ using Glade;
     [Glade.Widget]
     TextView textview2;
     
+    [Glade.Widget]
+    Toolbar toolbar1;
+    
     private static DeskFlickrUI deskflickr = null;
     public static string ICON_PATH = "icons/Font-Book.ico";
     public static string THUMBNAIL_PATH = "icons/FontBookThumbnail.png";
@@ -40,12 +43,12 @@ using Glade;
     
     // Needed to store the order of albums and photos shown in
     // left and right panes respectively.
-    private ArrayList albums;
-    private ArrayList photos;
+    private ArrayList _albums;
+    private ArrayList _photos;
     
 		private DeskFlickrUI() {
-		  albums = new ArrayList();
-		  photos = new ArrayList();
+		  _albums = new ArrayList();
+		  _photos = new ArrayList();
 		}
 		
 		public void CreateGUI() {
@@ -63,6 +66,7 @@ using Glade;
 		  SetLeftTextView();
 		  SetLeftTreeView();
 		  SetRightTreeView();
+		  SetToolBar();
 		  // Set window properties
 		  window1.SetIconFromFile(ICON_PATH);
 		  window1.DeleteEvent += OnWindowDeleteEvent;
@@ -77,7 +81,7 @@ using Glade;
       } else {
         albumStore.Clear();
       }
-      this.albums.Clear();
+      this._albums.Clear();
       
       foreach (Album a in PersistentInformation.GetInstance().GetAlbums()) {
         Photo primaryPhoto = PersistentInformation.GetInstance().
@@ -89,14 +93,14 @@ using Glade;
         
         System.Text.StringBuilder info = new System.Text.StringBuilder();
         info.AppendFormat(
-            "<span font_desc='Bitstream Vera Sans Bold 10'>{0}</span>", a.Title);
+            "<span font_desc='Times Bold 10'>{0}</span>", a.Title);
         info.AppendLine();
         info.AppendFormat(
-            "<span font_desc='Bitstream Vera Sans Bold 10'>{0} pics</span>", a.NumPics);
+            "<span font_desc='Times Bold 10'>{0} pics</span>", a.NumPics);
         albumStore.AppendValues(thumbnail, info.ToString());
         
         // Now add the setid to albums.
-        this.albums.Add(a.SetId);
+        this._albums.Add(a.SetId);
       }
       treeview1.Model = albumStore;
       treeview1.ShowAll();
@@ -104,13 +108,13 @@ using Glade;
     
     private void SetLeftTextView() {
       TextTag tag = new TextTag("headline");
-      tag.Font = "Bitstream Vera Sans Bold 12";
+      tag.Font = "Times Bold 12";
       tag.WrapMode = WrapMode.Word;
       // tag.BackgroundGdk = new Gdk.Color(0x99, 0x66, 0x00);
       textview2.Buffer.TagTable.Add(tag);
       
       tag = new TextTag("paragraph");
-      tag.Font = "Bitstream Vera Sans Italic 10";
+      tag.Font = "Times Italic 10";
       tag.WrapMode = WrapMode.Word;
       tag.ForegroundGdk = new Gdk.Color(0, 0, 0x99);
       textview2.Buffer.TagTable.Add(tag);
@@ -135,7 +139,7 @@ using Glade;
       foreach (TreePath t in ((TreeSelection)o).GetSelectedRows()) {
         TextBuffer buf = textview2.Buffer;
         buf.Clear();
-        string setid = (string) albums[t.Indices[0]];
+        string setid = (string) _albums[t.Indices[0]];
         Album album = PersistentInformation.GetInstance().GetAlbum(setid);
 
         // Set the buffer here.
@@ -163,29 +167,30 @@ using Glade;
 		  } else {
 		    photoStore.Clear();
 		  }
-		  photos.Clear();
+		  _photos.Clear();
 		  foreach (Photo p in PersistentInformation.
 		      GetInstance().GetPhotosForAlbum(setid)) {
 		      
         System.Text.StringBuilder pangoTitle = new System.Text.StringBuilder();
         pangoTitle.AppendFormat(
-            "<span font_desc='Bitstream Vera Sans Bold 10'>{0}</span>", p.Title);
+            "<span font_desc='Times Bold 10'>{0}</span>", p.Title);
         pangoTitle.AppendLine();
         pangoTitle.AppendFormat(
-            "<span font_desc='Bitstream Vera Sans Italic 10'>{0}</span>", 
+            "<span font_desc='Times Italic 10'>{0}</span>", 
             p.Description);
         
         string pangoTags = String.Format(
-            "<span font_desc='Bitstream Vera Sans 10'>{0}</span>", 
+            "<span font_desc='Times 10'>{0}</span>", 
             p.TagString);
         string pangoPrivacy = String.Format(
-            "<span font_desc='Bitstream Vera Sans 10'>{0}</span>", p.PrivacyInfo);
+            "<span font_desc='Times 10'>{0}</span>", p.PrivacyInfo);
         
         string pangoLicense = String.Format(
-            "<span font_desc='Bitstream Vera Sans 10'>{0}</span>", p.LicenseInfo);
+            "<span font_desc='Times 10'>{0}</span>", p.LicenseInfo);
             
 		    photoStore.AppendValues(p.Thumbnail, pangoTitle.ToString(), 
 		                            pangoTags, pangoPrivacy, pangoLicense);
+		    _photos.Add(p);
 		  }
 		  treeview2.Model = photoStore;
 		  treeview2.ShowAll();
@@ -214,15 +219,34 @@ using Glade;
 		  // Alternate rows have same color.
 		  treeview2.RulesHint = true;
 		  // Select multiple photos together.
-		  TreeSelection selection = treeview2.Selection;
-		  selection.Mode = Gtk.SelectionMode.Multiple;
+		  treeview2.Selection.Mode = Gtk.SelectionMode.Multiple;
 		  // Handle double clicks on photos.
-		  treeview2.RowActivated += OnDoubleClickPhoto;
+		  treeview2.RowActivated += new RowActivatedHandler(OnDoubleClickPhoto);
 		}
 		
-		public void OnDoubleClickPhoto(object o, RowActivatedArgs args) {
-		  Console.WriteLine("Row {0} was activated", args.Path);
-		  PhotoEditorUI photoeditor = new PhotoEditorUI();
+		private void OnDoubleClickPhoto(object o, RowActivatedArgs args) {
+		  ArrayList selectedphotos = new ArrayList();
+      foreach (int index in args.Path.Indices) {
+        selectedphotos.Add(_photos[index]);
+      }
+		  PhotoEditorUI photoeditor = new PhotoEditorUI(selectedphotos);
+		}
+				
+		private void EditButtonClicked(object o, EventArgs args) {
+		  ArrayList selectedphotos = new ArrayList();
+      foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
+        Photo p = (Photo) _photos[path.Indices[0]];
+        selectedphotos.Add(p);
+      }
+      PhotoEditorUI photoeditor = new PhotoEditorUI(selectedphotos);
+		}
+		
+		private void SetToolBar() {
+		  ToolButton editbutton = new ToolButton(Stock.Edit);
+		  editbutton.IsImportant = true;
+		  editbutton.Sensitive = true;
+		  editbutton.Clicked += new EventHandler(EditButtonClicked);
+		  toolbar1.Insert(editbutton, 0);
 		}
 		
 		public static DeskFlickrUI GetInstance() {
@@ -259,14 +283,12 @@ using Glade;
 		}
 		
 		// Connect the Signals defined in Glade
-  	private void OnWindowDeleteEvent (object sender, EventArgs a) 
-  	{
+  	private void OnWindowDeleteEvent (object sender, EventArgs a) {
   		Application.Quit ();
   		// a.RetVal = true;
   	}
   	
-  	private void ConnectionHandler(object sender, EventArgs e)
-  	{
+  	private void ConnectionHandler(object sender, EventArgs e) {
   	  SetStatusLabel("Connecting to Flickr...");
   	  FlickrCommunicator.GetInstance();
   	}
@@ -275,8 +297,7 @@ using Glade;
   	  label1.Text = status;
   	}
   	
-  	private void SetMenuBar()
-    {
+  	private void SetMenuBar() {
       // Connect menu item.
       imagemenuitem2.Activated += new EventHandler(ConnectionHandler);
       
