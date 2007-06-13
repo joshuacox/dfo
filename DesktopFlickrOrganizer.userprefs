@@ -5,6 +5,9 @@
     <File filename="./DeskFlickrUI.cs" />
     <File filename="./PhotoEditorUI.cs" />
     <File filename="./FirstTimeAuthentication.cs" />
+    <File filename="./PersistentInformation.cs" />
+    <File filename="./Photo.cs" />
+    <File filename="./Utils.cs" />
   </Files>
   <Views>
     <ViewMemento Id="MonoDevelop.Ide.Gui.Pads.ProjectPad">
