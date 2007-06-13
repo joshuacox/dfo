@@ -1,0 +1,286 @@
+
+using System;
+using System.Collections;
+using Gtk;
+using Glade;
+
+	public class DeskFlickrUI
+	{
+	  [Glade.Widget]
+    Window window1;
+    
+    [Glade.Widget]
+    Label label1;
+    
+    [Glade.Widget]
+    ProgressBar progressbar1;
+    
+    [Glade.Widget]
+    ImageMenuItem imagemenuitem2;
+    
+    [Glade.Widget]
+    ImageMenuItem imagemenuitem5;
+    
+    [Glade.Widget]
+    TreeView treeview1;
+    
+    [Glade.Widget]
+    TreeView treeview2;
+    
+    [Glade.Widget]
+    HBox hbox2;
+    
+    [Glade.Widget]
+    TextView textview2;
+    
+    private static DeskFlickrUI deskflickr = null;
+    public static string ICON_PATH = "icons/Font-Book.ico";
+    public static string THUMBNAIL_PATH = "icons/FontBookThumbnail.png";
+    public static string FLICKR_ICON = "icons/flickr_logo.gif";
+    
+    // Needed to store the order of albums and photos shown in
+    // left and right panes respectively.
+    private ArrayList albums;
+    private ArrayList photos;
+    
+		private DeskFlickrUI() {
+		  albums = new ArrayList();
+		  photos = new ArrayList();
+		}
+		
+		public void CreateGUI() {
+		  Application.Init();
+		  Glade.XML gxml = new Glade.XML (null, "organizer.glade", "window1", null);
+		  gxml.Autoconnect (this);
+		  
+		  // Set Text for the label
+		  label1.Text = "Desktop Flickr Organizer";
+      
+		  // Set the menu bar
+		  this.SetMenuBar();
+		  // hbox2.Remove(progressbar1);
+		  
+		  SetLeftTextView();
+		  SetLeftTreeView();
+		  SetRightTreeView();
+		  // Set window properties
+		  window1.SetIconFromFile(ICON_PATH);
+		  window1.DeleteEvent += OnWindowDeleteEvent;
+		  window1.ShowAll();
+		  Application.Run();
+		}
+	
+    public void PopulateAlbumTreeView() {
+      Gtk.ListStore albumStore = (Gtk.ListStore) treeview1.Model;
+      if (albumStore == null) {
+        albumStore = new Gtk.ListStore(typeof(Gdk.Pixbuf), typeof(string));
+      } else {
+        albumStore.Clear();
+      }
+      this.albums.Clear();
+      
+      foreach (Album a in PersistentInformation.GetInstance().GetAlbums()) {
+        Photo primaryPhoto = PersistentInformation.GetInstance().
+            GetPhoto(a.PrimaryPhotoid);
+        Gdk.Pixbuf thumbnail = null;
+        if (primaryPhoto != null) {
+          thumbnail = primaryPhoto.Thumbnail;
+        }
+        
+        System.Text.StringBuilder info = new System.Text.StringBuilder();
+        info.AppendFormat(
+            "<span font_desc='Bitstream Vera Sans Bold 10'>{0}</span>", a.Title);
+        info.AppendLine();
+        info.AppendFormat(
+            "<span font_desc='Bitstream Vera Sans Bold 10'>{0} pics</span>", a.NumPics);
+        albumStore.AppendValues(thumbnail, info.ToString());
+        
+        // Now add the setid to albums.
+        this.albums.Add(a.SetId);
+      }
+      treeview1.Model = albumStore;
+      treeview1.ShowAll();
+    }
+    
+    private void SetLeftTextView() {
+      TextTag tag = new TextTag("headline");
+      tag.Font = "Bitstream Vera Sans Bold 12";
+      tag.WrapMode = WrapMode.Word;
+      // tag.BackgroundGdk = new Gdk.Color(0x99, 0x66, 0x00);
+      textview2.Buffer.TagTable.Add(tag);
+      
+      tag = new TextTag("paragraph");
+      tag.Font = "Bitstream Vera Sans Italic 10";
+      tag.WrapMode = WrapMode.Word;
+      tag.ForegroundGdk = new Gdk.Color(0, 0, 0x99);
+      textview2.Buffer.TagTable.Add(tag);
+    }
+    
+		private void SetLeftTreeView() {
+		  // Set tree view 1
+		  Gtk.CellRendererText titleRenderer = new Gtk.CellRendererText();
+		  titleRenderer.WrapMode = Pango.WrapMode.Word;
+		  titleRenderer.WrapWidth = 200;
+		  
+      treeview1.AppendColumn ("Icon", new Gtk.CellRendererPixbuf(), "pixbuf", 0);
+      treeview1.AppendColumn ("Title", titleRenderer, "markup", 1);
+      treeview1.HeadersVisible = false;
+      treeview1.Model = null;
+      treeview1.Selection.Changed += OnSelectionLeftTreeChanged;
+      PopulateAlbumTreeView();
+		}
+		
+		private void OnSelectionLeftTreeChanged(object o, EventArgs args) {
+		
+      foreach (TreePath t in ((TreeSelection)o).GetSelectedRows()) {
+        TextBuffer buf = textview2.Buffer;
+        buf.Clear();
+        string setid = (string) albums[t.Indices[0]];
+        Album album = PersistentInformation.GetInstance().GetAlbum(setid);
+
+        // Set the buffer here.
+        buf.Text = "\n" + album.Title + "\n\n" + album.Desc;
+        TextIter start;
+        TextIter end;
+        start = buf.GetIterAtLine(1);
+        end = buf.GetIterAtLine(2);
+        buf.ApplyTag("headline", start, end);
+        buf.ApplyTag("paragraph", end, buf.EndIter);
+        textview2.Buffer = buf;
+        textview2.ShowAll();
+        
+        // Set photos here
+        PopulatePhotosTreeView(setid);
+      }
+		}
+		
+		public void PopulatePhotosTreeView(string setid) {
+		  Gtk.ListStore photoStore = (Gtk.ListStore) treeview2.Model;
+		  if (photoStore == null) {
+		    photoStore = new Gtk.ListStore(typeof(Gdk.Pixbuf), typeof(string),
+		                                   typeof(string), typeof(string), 
+		                                   typeof(string));
+		  } else {
+		    photoStore.Clear();
+		  }
+		  photos.Clear();
+		  foreach (Photo p in PersistentInformation.
+		      GetInstance().GetPhotosForAlbum(setid)) {
+		      
+        System.Text.StringBuilder pangoTitle = new System.Text.StringBuilder();
+        pangoTitle.AppendFormat(
+            "<span font_desc='Bitstream Vera Sans Bold 10'>{0}</span>", p.Title);
+        pangoTitle.AppendLine();
+        pangoTitle.AppendFormat(
+            "<span font_desc='Bitstream Vera Sans Italic 10'>{0}</span>", 
+            p.Description);
+        
+        string pangoTags = String.Format(
+            "<span font_desc='Bitstream Vera Sans 10'>{0}</span>", 
+            p.TagString);
+        string pangoPrivacy = String.Format(
+            "<span font_desc='Bitstream Vera Sans 10'>{0}</span>", p.PrivacyInfo);
+        
+        string pangoLicense = String.Format(
+            "<span font_desc='Bitstream Vera Sans 10'>{0}</span>", p.LicenseInfo);
+            
+		    photoStore.AppendValues(p.Thumbnail, pangoTitle.ToString(), 
+		                            pangoTags, pangoPrivacy, pangoLicense);
+		  }
+		  treeview2.Model = photoStore;
+		  treeview2.ShowAll();
+    }
+    
+		public void SetRightTreeView() {
+		  Gtk.CellRendererText titleRenderer = new Gtk.CellRendererText();
+		  titleRenderer.WrapWidth = 400;
+		  titleRenderer.WrapMode = Pango.WrapMode.Word;
+		  
+		  Gtk.CellRendererText tagRenderer = new Gtk.CellRendererText();
+		  tagRenderer.WrapWidth = 150;
+		  tagRenderer.WrapMode = Pango.WrapMode.Word;
+		  
+		  Gtk.CellRendererText licenseRenderer = new Gtk.CellRendererText();
+		  licenseRenderer.WrapWidth = 200;
+		  licenseRenderer.WrapMode = Pango.WrapMode.Word;
+		  
+		  treeview2.AppendColumn("Thumbnail", new Gtk.CellRendererPixbuf(), "pixbuf", 0);
+		  treeview2.AppendColumn("Title/Description", titleRenderer, "markup", 1);
+		  treeview2.AppendColumn("Tags", tagRenderer, "markup", 2);
+		  treeview2.AppendColumn("Viewable", tagRenderer, "markup", 3);
+		  treeview2.AppendColumn("License", licenseRenderer, "markup", 4);
+		  treeview2.HeadersVisible = true;
+		  treeview2.Model = null;
+		  // Alternate rows have same color.
+		  treeview2.RulesHint = true;
+		  // Select multiple photos together.
+		  TreeSelection selection = treeview2.Selection;
+		  selection.Mode = Gtk.SelectionMode.Multiple;
+		  // Handle double clicks on photos.
+		  treeview2.RowActivated += OnDoubleClickPhoto;
+		}
+		
+		public void OnDoubleClickPhoto(object o, RowActivatedArgs args) {
+		  Console.WriteLine("Row {0} was activated", args.Path);
+		  PhotoEditorUI photoeditor = new PhotoEditorUI();
+		}
+		
+		public static DeskFlickrUI GetInstance() {
+		  if (deskflickr == null) {
+		    deskflickr = new DeskFlickrUI();
+		  }
+		  return deskflickr;
+		}
+		
+		public void ShowAllInWindow() {
+		  window1.ShowAll();
+		}
+		
+		public void SetLimitsProgressBar(int max) {
+		  progressbar1.Adjustment.Lower = 0;
+		  progressbar1.Adjustment.Upper = max;
+		  progressbar1.Adjustment.Value = 0;
+		}
+		
+		public void SetValueProgressBar(int val) {
+		  progressbar1.Adjustment.Value = val;
+		}
+		
+		public void IncrementProgressBar(int delta) {
+		  if (progressbar1.Adjustment.Upper > progressbar1.Adjustment.Value) {
+		    progressbar1.Adjustment.Value += delta;
+		  }
+		  progressbar1.Text = String.Format("{0}/{1}",
+		      progressbar1.Adjustment.Value, progressbar1.Adjustment.Upper);
+		}
+		
+		public void SetProgressBarText(string status) {
+		  progressbar1.Text = status;
+		}
+		
+		// Connect the Signals defined in Glade
+  	private void OnWindowDeleteEvent (object sender, EventArgs a) 
+  	{
+  		Application.Quit ();
+  		// a.RetVal = true;
+  	}
+  	
+  	private void ConnectionHandler(object sender, EventArgs e)
+  	{
+  	  SetStatusLabel("Connecting to Flickr...");
+  	  FlickrCommunicator.GetInstance();
+  	}
+  	
+  	public void SetStatusLabel(string status) {
+  	  label1.Text = status;
+  	}
+  	
+  	private void SetMenuBar()
+    {
+      // Connect menu item.
+      imagemenuitem2.Activated += new EventHandler(ConnectionHandler);
+      
+      // Quit menu item.
+      imagemenuitem5.Activated += new EventHandler(OnWindowDeleteEvent);
+    }
+	}
