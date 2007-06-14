@@ -70,9 +70,15 @@ using Glade;
     Image image3;
     
     private ArrayList tags;
-    private ArrayList tagschosen;
     private ArrayList selectedphotos;
     private int curphotoindex;
+    
+    // I haven't been able to figure out a way so that only the user
+    // selection of combobox elements, would trigger the OnPrivacyChanged
+    // and OnLicenseChanged methods. So, I'll go with a hack, by passing
+    // in a boolean variable, which can tell these methods, when to not
+    // heed to the changes done to the box.
+    private bool ignorechangedevent;
     
 		public PhotoEditorUI(ArrayList selectedphotos)
 		{
@@ -108,6 +114,14 @@ using Glade;
       button4.Clicked += new EventHandler(OnNextButtonClick);
       button5.Clicked += new EventHandler(OnCancelButtonClick);
       
+      entry1.Changed += new EventHandler(OnTitleChanged);
+      entry2.Changed += new EventHandler(OnDescChanged);
+      
+      combobox1.Changed += new EventHandler(OnPrivacyChanged);
+      combobox2.Changed += new EventHandler(OnLicenseChanged);
+      
+      textview3.Buffer.Changed += new EventHandler(OnTagsChanged);
+      
       this.selectedphotos = selectedphotos;
       if (selectedphotos.Count == 1) {
         checkbutton1.Sensitive = false;
@@ -124,6 +138,21 @@ using Glade;
 	    else if (p.IsFriend == 1) return 3;
 	    else if (p.IsFamily == 1) return 4;
 	    else return 5;
+		}
+		
+		private void SetPhotoPrivacyFromBox(ref Photo p, int index) {
+		  if (index == 1) {
+		    Console.WriteLine("Setting photo to be public");
+		    p.IsPublic = 1; p.IsFriend = 0; p.IsFamily = 0;
+		  } else if (index == 2) {
+		    p.IsPublic = 0; p.IsFriend = 1; p.IsFamily = 1;
+		  } else if (index == 3) {
+		    p.IsPublic = 0; p.IsFriend = 1; p.IsFamily = 0;
+		  } else if (index == 4) {
+		    p.IsPublic = 0; p.IsFriend = 0; p.IsFamily = 1;
+		  } else {
+		    p.IsPublic = 0; p.IsFriend = 0; p.IsFamily = 0;
+		  }
 		}
 		
 		private void SetPrivacyComboBox() {
@@ -144,6 +173,11 @@ using Glade;
 		
 		private int GetIndexOfLicenseBox(Photo p) {
 		  return p.License + 1;
+		}
+		
+		private Photo SetPhotoLicenseFromBox(ref Photo p, int index) {
+		  p.License = index - 1;
+		  return p;
 		}
 		
 		private void SetLicenseComboBox() {
@@ -174,18 +208,6 @@ using Glade;
 		  iconview1.TextColumn = 0;
 		  iconview1.ItemActivated += new ItemActivatedHandler(OnTagClicked);
 		}
-				
-		private void OnTagClicked(object o, ItemActivatedArgs args) {
-		  Console.WriteLine("Tag clicked: " + args.Path.Indices[0]);
-		  Tag t = (Tag) tags[args.Path.Indices[0]];
-		  Console.WriteLine("Got tag: " + t.Name);
-		  if (!tagschosen.Contains(t.Name)) {
-		    tagschosen.Add(t.Name);
-		  }
-		  TextBuffer buf = textview3.Buffer;
-		  buf.Text = Utils.GetTagString(tagschosen);
-		  textview3.Buffer = buf;
-		}
 		
 		private string GetPangoFormattedText(string text) {
 		  //return String.Format("<span font_desc='FreeSerif 10'>{0}</span>", text);
@@ -199,7 +221,7 @@ using Glade;
 		  string commonDesc = firstphoto.Description;
 		  int commonPrivacy = GetIndexOfPrivacyBox(firstphoto);
 		  int commonLicense = GetIndexOfLicenseBox(firstphoto);
-		  tagschosen = firstphoto.Tags;
+		  ArrayList tagschosen = firstphoto.Tags;
 		  
 		  foreach (Photo p in selectedphotos) {
 		    if (!commonTitle.Equals(p.Title)) commonTitle = "";
@@ -210,9 +232,15 @@ using Glade;
 		  }
 		  entry1.Text = commonTitle;
 		  entry2.Text = commonDesc;
+		  
+		  ignorechangedevent = true;
+		  {
 		  combobox1.Active = commonPrivacy;
 		  combobox2.Active = commonLicense;
 		  textview3.Buffer.Text = Utils.GetTagString(tagschosen);
+		  }
+		  ignorechangedevent = false;
+		  
 		  image3.Sensitive = false;
 		  image3.Pixbuf = null;
 		  button3.Sensitive = false;
@@ -224,20 +252,128 @@ using Glade;
 		private void ShowInformationForPhoto(Photo p) {
 		  entry1.Text = p.Title;
 		  entry2.Text = p.Description;
+		  
+		  ignorechangedevent = true;
+		  {
 		  combobox1.Active = GetIndexOfPrivacyBox(p);
 		  combobox2.Active = GetIndexOfLicenseBox(p);
-		  tagschosen = p.Tags;
 		  textview3.Buffer.Text = Utils.GetTagString(p.Tags);
+		  }
+		  ignorechangedevent = false;
+		  
 		  image3.Sensitive = true;
 		  image3.Pixbuf = p.SmallImage;
 		  label7.Sensitive = true;
-      label7.Markup = "<span weight='bold'>" + p.Title + "</span>";
+      SetTitleTopRight(p.Title);
+		}
+		
+		private void SetTitleTopRight(string title) {
+		  label7.Markup = "<span weight='bold'>" + title + "</span>";
 		}
 		
 		private void ShowInformationForCurrentPhoto() {
 		  Photo p = (Photo) selectedphotos[curphotoindex];
 		  ShowInformationForPhoto(p);
 		}
+
+		private void OnTagClicked(object o, ItemActivatedArgs args) {
+		  Tag t = (Tag) tags[args.Path.Indices[0]];
+		  ArrayList tagschosen;
+		  
+		  if (checkbutton1.Active || !checkbutton1.Sensitive) {
+		    Photo p = (Photo) selectedphotos[curphotoindex];
+		    p.AddTag(t.Name);
+		    tagschosen = p.Tags;
+		  } else {
+		    foreach (Photo p in selectedphotos) {
+		      p.AddTag(t.Name);
+		    }
+		    tagschosen = ((Photo)selectedphotos[0]).Tags;
+		    foreach (Photo p in selectedphotos) {
+		      tagschosen = Utils.GetIntersection(tagschosen, p.Tags);
+		    }
+		  }
+		  
+		  ignorechangedevent = true;
+		  textview3.Buffer.Text = Utils.GetTagString(tagschosen);
+		  ignorechangedevent = false;
+		}
+		
+		private void OnTagsChanged(object o, EventArgs args) {
+		  ArrayList parsedtags = Utils.ParseTagsFromString(textview3.Buffer.Text);
+		  if (parsedtags == null || ignorechangedevent) {
+		    return;
+		  }
+		  if (checkbutton1.Active || !checkbutton1.Sensitive) {
+		    Photo p = (Photo) selectedphotos[curphotoindex];
+		    p.Tags = parsedtags;
+		  } else {
+		    foreach (Photo p in selectedphotos) {
+		      p.Tags = parsedtags;
+		    }
+		  }
+		}
+		
+		private void OnTitleChanged(object o, EventArgs args) {
+		  // if the entry is not being changed by the user, then 
+		  // don't do the updates.
+		  if (!entry1.IsFocus) return;
+		  
+		  if (checkbutton1.Active || !checkbutton1.Sensitive) {
+		    // Per photo
+		    Photo p = (Photo) selectedphotos[curphotoindex];
+		    p.Title = entry1.Text;
+		  } else {
+		    // Group of photos
+		    foreach (Photo p in selectedphotos) {
+		      p.Title = entry1.Text;
+		    }
+		  }
+		  SetTitleTopRight(entry1.Text);
+		}
+		
+		private void OnDescChanged(object o, EventArgs args) {
+		  if (!entry2.IsFocus) return;
+
+		  if (checkbutton1.Active || !checkbutton1.Sensitive) {
+		    // Per photo
+		    Photo p = (Photo) selectedphotos[curphotoindex];
+		    p.Description = entry2.Text;
+		  } else {
+		    // Group of photos
+		    foreach (Photo p in selectedphotos) {
+		      p.Description = entry2.Text;
+		    }
+		  }
+		}
+		
+		private void OnPrivacyChanged(object o, EventArgs args) {
+      if (ignorechangedevent) return;
+		  
+		  if (checkbutton1.Active || !checkbutton1.Sensitive) {
+		    Photo p = (Photo) selectedphotos[curphotoindex];
+		    SetPhotoPrivacyFromBox(ref p, combobox1.Active);
+		  } else {
+		    for (int i=0; i<selectedphotos.Count; i++) {
+		      Photo p = (Photo) selectedphotos[i];
+		      SetPhotoPrivacyFromBox(ref p, combobox1.Active);
+		    }
+		  }
+		}
+		
+		private void OnLicenseChanged(object o, EventArgs args) {
+		  if (ignorechangedevent) return;
+		  
+		  if (checkbutton1.Active || !checkbutton1.Sensitive) {
+		    Photo p = (Photo) selectedphotos[curphotoindex];
+		    SetPhotoLicenseFromBox(ref p, combobox2.Active);
+		  } else {
+		    for (int i=0; i<selectedphotos.Count; i++) {
+		      Photo p = (Photo) selectedphotos[i];
+		      SetPhotoLicenseFromBox(ref p, combobox2.Active);
+		    }
+		  }
+    }
 		
 		private void OnPerPageCheckToggled(object o, EventArgs args) {
 		  if (checkbutton1.Active) {

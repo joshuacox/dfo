@@ -42,7 +42,8 @@ using Glade;
     public static string FLICKR_ICON = "icons/flickr_logo.gif";
     
     // Needed to store the order of albums and photos shown in
-    // left and right panes respectively.
+    // left and right panes respectively. These two variables just store
+    // the ids of sets and photos respectively.
     private ArrayList _albums;
     private ArrayList _photos;
     
@@ -190,7 +191,7 @@ using Glade;
             
 		    photoStore.AppendValues(p.Thumbnail, pangoTitle.ToString(), 
 		                            pangoTags, pangoPrivacy, pangoLicense);
-		    _photos.Add(p);
+		    _photos.Add(p.Id);
 		  }
 		  treeview2.Model = photoStore;
 		  treeview2.ShowAll();
@@ -226,16 +227,19 @@ using Glade;
 		
 		private void OnDoubleClickPhoto(object o, RowActivatedArgs args) {
 		  ArrayList selectedphotos = new ArrayList();
-      foreach (int index in args.Path.Indices) {
-        selectedphotos.Add(_photos[index]);
-      }
+		  int index = args.Path.Indices[0];
+      Photo p = PersistentInformation.GetInstance()
+                                     .GetPhoto((string)_photos[index]);
+      selectedphotos.Add(p);
 		  PhotoEditorUI photoeditor = new PhotoEditorUI(selectedphotos);
 		}
 				
 		private void EditButtonClicked(object o, EventArgs args) {
 		  ArrayList selectedphotos = new ArrayList();
       foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
-        Photo p = (Photo) _photos[path.Indices[0]];
+        int index = path.Indices[0];
+        Photo p = PersistentInformation.GetInstance()
+                                       .GetPhoto((string)_photos[index]);
         selectedphotos.Add(p);
       }
       PhotoEditorUI photoeditor = new PhotoEditorUI(selectedphotos);
@@ -246,7 +250,13 @@ using Glade;
 		  editbutton.IsImportant = true;
 		  editbutton.Sensitive = true;
 		  editbutton.Clicked += new EventHandler(EditButtonClicked);
-		  toolbar1.Insert(editbutton, 0);
+		  toolbar1.Insert(editbutton, -1);
+		  
+//		  ToolButton quitbutton = new ToolButton(Stock.Quit);
+//		  quitbutton.IsImportant = true;
+//		  quitbutton.Sensitive = true;
+//		  quitbutton.Clicked += new EventHandler(OnWindowDeleteEvent);
+//		  toolbar1.Insert(quitbutton, -1);
 		}
 		
 		public static DeskFlickrUI GetInstance() {

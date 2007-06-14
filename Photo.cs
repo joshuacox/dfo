@@ -27,7 +27,7 @@ using System.Collections;
 		  this.isfriend = isfriend;
 		  this.isfamily = isfamily;
 		  this.lastupdate = lastupdate;
-		  this.tags = null;
+		  this.tags = new ArrayList();
 		}
 		
 		public string GetInsertStatement() {
@@ -57,7 +57,16 @@ using System.Collections;
 		    return tags;
 		  }
 		  set {
-		    tags = value;
+		    tags.Clear();
+		    foreach (string t in value) {
+		      AddTag(t);
+		    }
+		  }
+		}
+		
+		public void AddTag(string tag) {
+		  if (!tags.Contains(tag)) {
+		    tags.Add(tag);
 		  }
 		}
 		
