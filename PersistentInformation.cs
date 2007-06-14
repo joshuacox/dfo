@@ -17,6 +17,7 @@ using Mono.Data.SqliteClient;
 		private static string HOME = 
 		    System.Environment.GetEnvironmentVariable("HOME") + "/.desktopflickr";
 		private static string THUMBNAIL_DIR = HOME + "/thumbnails";
+		private static string SMALL_IMAGE_DIR = HOME + "/small_images";
     private static string DB_PATH = "URI=file:" + HOME + "/sqlite.db";
     
     private static string CREATE_PHOTO_TABLE = 
@@ -72,7 +73,8 @@ using Mono.Data.SqliteClient;
 		{
       EnsureDirectoryExists(HOME);
       EnsureDirectoryExists(THUMBNAIL_DIR);
-
+      EnsureDirectoryExists(SMALL_IMAGE_DIR);
+      
       dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
       dbcon.Open();
       
@@ -109,10 +111,11 @@ using Mono.Data.SqliteClient;
 		/*
 		 * Photo retrieval and setting methods.
 		 */
-		public string GetThumbnailPath(string photoid) {
+		private string GetThumbnailPath(string photoid) {
 		  return String.Format("{0}/{1}.png", THUMBNAIL_DIR, photoid);
 		}
 		
+		// Retrive the thumbnail of the photo.
 		public Gdk.Pixbuf GetThumbnail(string photoid) {
 		  try {
 		    FileStream fs = new FileStream(GetThumbnailPath(photoid), 
@@ -123,11 +126,33 @@ using Mono.Data.SqliteClient;
 		  }
 		}
 		
+		public void SetThumbnail(string photoid, Gdk.Pixbuf buf) {
+		  buf.Save(GetThumbnailPath(photoid), "png");
+		}
+		
+		private string GetSmallImagePath(string photoid) {
+		  return String.Format("{0}/{1}.png", SMALL_IMAGE_DIR, photoid);
+		}
+		
+		// Retrive the small size image to be shown when editing of photos.
+		public Gdk.Pixbuf GetSmallImage(string photoid) {
+		  try {
+		    FileStream fs = new FileStream(GetSmallImagePath(photoid), 
+		                                   FileMode.Open, FileAccess.Read);
+		    return new Gdk.Pixbuf(fs);
+		  } catch(Exception e) {
+		    return null;
+		  }
+		}
+		
+		public void SetSmallImage(string photoid, Gdk.Pixbuf buf) {
+		  buf.Save(GetSmallImagePath(photoid), "png");
+		}
+		
 		public void InsertPhoto(Photo p) {
 		  IDbCommand dbcmd = dbcon.CreateCommand();
 		  dbcmd.CommandText = p.GetInsertStatement();
 		  dbcmd.ExecuteNonQuery();
-		  p.Thumbnail.Save(GetThumbnailPath(p.Id), "png");
 		  foreach (string tag in p.Tags) {
 		    dbcmd = dbcon.CreateCommand();
 		    dbcmd.CommandText = String.Format(
@@ -154,9 +179,8 @@ using Mono.Data.SqliteClient;
 		    string lastupdated = reader.GetString(7);
 		    // Retrieve the thumbnail from thumbnail home directory.
 		    
-		    Gdk.Pixbuf pix = GetThumbnail(id);
 		    photo = new Photo(id, title, desc, license, isPublic,
-		                      isFriend, isFamily, lastupdated, pix);
+		                      isFriend, isFamily, lastupdated);
 		    photo.Tags = GetTags(id);
 		  }
 		  return photo;
@@ -339,6 +363,15 @@ using Mono.Data.SqliteClient;
 		 */
 		public void AddPhotoToAlbum(string photoid, string setid) {
 		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  dbcmd.CommandText = String.Format(
+		      "select * from setphoto where setid='{0}' and photoid='{1}';",
+		      setid, photoid);
+      if (dbcmd.ExecuteReader().Read()) {
+        // Entry already exists, skip insertion
+        return;
+      }
+      
+		  // Entry not present in the table, insert it.
 		  dbcmd.CommandText = String.Format(
 		      "insert into setphoto (setid, photoid) values('{0}','{1}');",
 		      setid, photoid);
