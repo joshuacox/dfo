@@ -12,13 +12,12 @@ using System.Collections;
 		private int isfriend;
 		private int isfamily;
 		private string lastupdate;
-		private Gdk.Pixbuf thumbnail;
 		// these are string tags, not from class Tag.
 		private ArrayList tags;
 		
 		public Photo(string id, string title, string desc, int license,
 		             int ispublic, int isfriend, int isfamily,
-		             string lastupdate, Gdk.Pixbuf thumbnail)
+		             string lastupdate)
 		{
 		  this.id = id;
 		  this.title = title;
@@ -28,7 +27,6 @@ using System.Collections;
 		  this.isfriend = isfriend;
 		  this.isfamily = isfamily;
 		  this.lastupdate = lastupdate;
-		  this.thumbnail = thumbnail;
 		  this.tags = null;
 		}
 		
@@ -83,13 +81,22 @@ using System.Collections;
 		    return info;
 		  }
 		}
-		
+	
 		public Gdk.Pixbuf Thumbnail {
 		  get {
-		    return thumbnail;
+		    return PersistentInformation.GetInstance().GetThumbnail(id);
 		  }
 		  set {
-		    thumbnail = value;
+		    PersistentInformation.GetInstance().SetThumbnail(id, value);
+		  }
+		}
+		
+		public Gdk.Pixbuf SmallImage {
+		  get {
+		    return PersistentInformation.GetInstance().GetSmallImage(id);
+		  }
+		  set {
+		    PersistentInformation.GetInstance().SetSmallImage(id, value);
 		  }
 		}
 		

@@ -80,16 +80,28 @@ using FlickrNet;
 		    }
 		    break;
 		  }
-		  Gdk.Pixbuf pix = PersistentInformation.GetInstance().GetThumbnail(photoid);
-		  if (pix == null) {
-		    System.IO.Stream stream = webclient.OpenRead(pInfo.SquareThumbnailUrl);
-		    pix = new Gdk.Pixbuf(stream);
-		  }
-		  Console.WriteLine("Got description: " + pInfo.Description);
+
 		  Photo photo = new Photo(photoid, pInfo.Title, pInfo.Description,
 		                          pInfo.License, pInfo.Visibility.IsPublic,
 		                          pInfo.Visibility.IsFriend, 
-		                          pInfo.Visibility.IsFamily, "", pix);
+		                          pInfo.Visibility.IsFamily, "");
+		                          
+		  Gdk.Pixbuf thumbnail = 
+		      PersistentInformation.GetInstance().GetThumbnail(photoid);
+		  if (thumbnail == null) {
+		    // This determines what size is download for the image.
+		    System.IO.Stream stream = webclient.OpenRead(pInfo.SquareThumbnailUrl);
+		    thumbnail = new Gdk.Pixbuf(stream);
+		    photo.Thumbnail = thumbnail;
+		  }
+		  
+		  Gdk.Pixbuf smallimage = 
+		      PersistentInformation.GetInstance().GetSmallImage(photoid);
+		  if (smallimage == null) {
+		    System.IO.Stream stream = webclient.OpenRead(pInfo.SmallUrl);
+		    smallimage = new Gdk.Pixbuf(stream);
+		    photo.SmallImage = smallimage;
+		  }
 		  // Couldn't add the last updated information, coz the library doesn't
 		  // provide those methods unfortunately.
 		  
@@ -131,6 +143,7 @@ using FlickrNet;
 		    Photo p = RetrievePhoto(s.PrimaryPhotoId);
 		    PersistentInformation.GetInstance().UpdateAlbum(album);
         PersistentInformation.GetInstance().UpdatePhoto(p);
+        PersistentInformation.GetInstance().AddPhotoToAlbum(p.Id, album.SetId);
         
 		    Gtk.Application.Invoke (delegate {
 		      DeskFlickrUI.GetInstance().IncrementProgressBar(1);

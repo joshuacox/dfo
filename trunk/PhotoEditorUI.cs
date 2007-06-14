@@ -103,16 +103,18 @@ using Glade;
 		  // only when the user ticks the 'Per Photo' checkbutton.
       button3.Sensitive = false;
       button4.Sensitive = false;
-      if (selectedphotos.Count == 1) {
-        checkbutton1.Sensitive = false;
-      }
       checkbutton1.Toggled += new EventHandler(OnPerPageCheckToggled);
       button3.Clicked += new EventHandler(OnPrevButtonClick);
       button4.Clicked += new EventHandler(OnNextButtonClick);
       button5.Clicked += new EventHandler(OnCancelButtonClick);
       
       this.selectedphotos = selectedphotos;
-      EmbedCommonInformation();
+      if (selectedphotos.Count == 1) {
+        checkbutton1.Sensitive = false;
+        ShowInformationForCurrentPhoto();
+      } else {
+        EmbedCommonInformation();
+      }
 		  window2.ShowAll();
 		}
 		
@@ -219,17 +221,22 @@ using Glade;
 		  label7.Sensitive = false;
 		}
 		
-		private void ShowInformationForCurrentPhoto() {
-		  Photo p = (Photo) selectedphotos[curphotoindex];
+		private void ShowInformationForPhoto(Photo p) {
 		  entry1.Text = p.Title;
 		  entry2.Text = p.Description;
 		  combobox1.Active = GetIndexOfPrivacyBox(p);
 		  combobox2.Active = GetIndexOfLicenseBox(p);
+		  tagschosen = p.Tags;
 		  textview3.Buffer.Text = Utils.GetTagString(p.Tags);
 		  image3.Sensitive = true;
-		  image3.Pixbuf = p.Thumbnail;
+		  image3.Pixbuf = p.SmallImage;
 		  label7.Sensitive = true;
-		  label7.Text = p.Title;
+      label7.Markup = "<span weight='bold'>" + p.Title + "</span>";
+		}
+		
+		private void ShowInformationForCurrentPhoto() {
+		  Photo p = (Photo) selectedphotos[curphotoindex];
+		  ShowInformationForPhoto(p);
 		}
 		
 		private void OnPerPageCheckToggled(object o, EventArgs args) {
