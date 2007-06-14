@@ -15,4 +15,12 @@ using System.Collections;
 		  }
 		  return intersectedlist;
 		}
+		
+		public static ArrayList ParseTagsFromString(string tagstring) {
+		  if (tagstring.Contains("\"")) return null;
+		  
+		  string[] tokens = tagstring.Split(' ');
+		  ArrayList tags = new ArrayList(tokens);
+		  return tags;
+		}
 	}
