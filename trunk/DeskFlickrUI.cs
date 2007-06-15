@@ -47,9 +47,12 @@ using Glade;
     private ArrayList _albums;
     private ArrayList _photos;
     
+    private int leftcurselectedindex;
+    
 		private DeskFlickrUI() {
 		  _albums = new ArrayList();
 		  _photos = new ArrayList();
+		  leftcurselectedindex = 0;
 		}
 		
 		public void CreateGUI() {
@@ -135,28 +138,35 @@ using Glade;
       PopulateAlbumTreeView();
 		}
 		
+		// This method is a general purpose method, meant to take of changes
+		// done to albums, or tags, shown in the left pane.
 		private void OnSelectionLeftTreeChanged(object o, EventArgs args) {
 		
-      foreach (TreePath t in ((TreeSelection)o).GetSelectedRows()) {
-        TextBuffer buf = textview2.Buffer;
-        buf.Clear();
-        string setid = (string) _albums[t.Indices[0]];
-        Album album = PersistentInformation.GetInstance().GetAlbum(setid);
-
-        // Set the buffer here.
-        buf.Text = "\n" + album.Title + "\n\n" + album.Desc;
-        TextIter start;
-        TextIter end;
-        start = buf.GetIterAtLine(1);
-        end = buf.GetIterAtLine(2);
-        buf.ApplyTag("headline", start, end);
-        buf.ApplyTag("paragraph", end, buf.EndIter);
-        textview2.Buffer = buf;
-        textview2.ShowAll();
-        
-        // Set photos here
-        PopulatePhotosTreeView(setid);
+      TreePath[] treepaths = ((TreeSelection)o).GetSelectedRows();
+      if (treepaths.Length > 0) {
+        leftcurselectedindex = (treepaths[0]).Indices[0];
       }
+      
+      TextBuffer buf = textview2.Buffer;
+      buf.Clear();
+      // It is obvious that there would be at least one album, because
+      // otherwise left treeview model wouldn't be formed, and the user
+      // would have nothing to click upon.
+      string setid = (string) _albums[leftcurselectedindex];
+      Album album = PersistentInformation.GetInstance().GetAlbum(setid);
+      // Set the buffer here.
+      buf.Text = "\n" + album.Title + "\n\n" + album.Desc;
+      TextIter start;
+      TextIter end;
+      start = buf.GetIterAtLine(1);
+      end = buf.GetIterAtLine(2);
+      buf.ApplyTag("headline", start, end);
+      buf.ApplyTag("paragraph", end, buf.EndIter);
+      textview2.Buffer = buf;
+      textview2.ShowAll();
+        
+      // Set photos here
+      PopulatePhotosTreeView(setid);
 		}
 		
 		public void PopulatePhotosTreeView(string setid) {
@@ -195,6 +205,11 @@ using Glade;
 		  }
 		  treeview2.Model = photoStore;
 		  treeview2.ShowAll();
+    }
+    
+    public void RefreshPhotosTreeView() {
+      string setid = (string)_albums[leftcurselectedindex];
+      PopulatePhotosTreeView(setid);
     }
     
 		public void SetRightTreeView() {

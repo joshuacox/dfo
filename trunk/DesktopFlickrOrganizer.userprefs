@@ -3,9 +3,10 @@
   <Files>
     <File filename="Welcome" />
     <File filename="./DeskFlickrUI.cs" />
-    <File filename="./PhotoEditorUI.cs" />
     <File filename="./Photo.cs" />
-    <File filename="./Utils.cs" />
+    <File filename="./PersistentInformation.cs" />
+    <File filename="./Album.cs" />
+    <File filename="./PhotoEditorUI.cs" />
   </Files>
   <Views>
     <ViewMemento Id="MonoDevelop.Ide.Gui.Pads.ProjectPad">

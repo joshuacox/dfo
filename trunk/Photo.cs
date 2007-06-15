@@ -30,19 +30,6 @@ using System.Collections;
 		  this.tags = new ArrayList();
 		}
 		
-		public string GetInsertStatement() {
-		  System.Text.StringBuilder strb = 
-		      new System.Text.StringBuilder("insert into photo");
-		  strb.Append(" (id, title, desc, license, ispublic, isfriend, isfamily)");
-		  strb.Append(" values(");
-		  string safeTitle = title.Replace("'", "''");
-		  string safeDesc = desc.Replace("'", "''");
-		  strb.AppendFormat("'{0}','{1}','{2}',", id, safeTitle, safeDesc);
-		  strb.AppendFormat("{0},{1},{2},{3});", 
-		                    license, ispublic, isfriend, isfamily);
-		  return strb.ToString();
-		}
-		
 		public string LastUpdate {
 		  get {
 		    return lastupdate;
