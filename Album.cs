@@ -31,17 +31,6 @@ using System;
 		  return isequal;
 		}
 		
-		public string GetInsertStatement() {
-		  System.Text.StringBuilder strb = 
-		      new System.Text.StringBuilder("insert into album");
-		  strb.Append(" (setid, title, desc, photoid, numpics)");
-		  strb.Append(" values(");
-		  strb.AppendFormat("'{0}','{1}','{2}',", setid, title, desc);
-		  strb.AppendFormat("'{0}',{1}", photoid, numpics);
-		  strb.Append(");");
-		  return strb.ToString();
-		}
-		
 		public string SetId {
 		  get {
 		    return setid;

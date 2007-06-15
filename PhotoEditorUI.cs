@@ -63,6 +63,7 @@ using Glade;
     [Glade.Widget]
     Button button5;
     
+    // Save and Close
     [Glade.Widget]
     Button button6;
     
@@ -112,7 +113,8 @@ using Glade;
       checkbutton1.Toggled += new EventHandler(OnPerPageCheckToggled);
       button3.Clicked += new EventHandler(OnPrevButtonClick);
       button4.Clicked += new EventHandler(OnNextButtonClick);
-      button5.Clicked += new EventHandler(OnCancelButtonClick);
+      button5.Clicked += new EventHandler(OnSaveButtonClick);
+      button6.Clicked += new EventHandler(OnCancelButtonClick);
       
       entry1.Changed += new EventHandler(OnTitleChanged);
       entry2.Changed += new EventHandler(OnDescChanged);
@@ -164,7 +166,7 @@ using Glade;
 		  ListStore store1 = new ListStore(typeof(string));
 		  store1.AppendValues("");
 		  store1.AppendValues(GetPangoFormattedText("Public"));
-		  store1.AppendValues(GetPangoFormattedText("Only Friends &amp Family"));
+		  store1.AppendValues(GetPangoFormattedText("Only Friends and Family"));
 		  store1.AppendValues(GetPangoFormattedText("Only Friends"));
 		  store1.AppendValues(GetPangoFormattedText("Only Family"));
 		  store1.AppendValues(GetPangoFormattedText("Private"));
@@ -410,5 +412,13 @@ using Glade;
 		
 		private void OnCancelButtonClick(object o, EventArgs args) {
 		  window2.Destroy();
+		}
+		
+		private void OnSaveButtonClick(object o, EventArgs args) {
+		  foreach (Photo p in selectedphotos) {
+        PersistentInformation.GetInstance().SavePhoto(p);
+		  }
+		  window2.Destroy();
+		  DeskFlickrUI.GetInstance().RefreshPhotosTreeView();
 		}
 	}

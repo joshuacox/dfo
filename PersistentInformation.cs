@@ -54,9 +54,7 @@ using Mono.Data.SqliteClient;
 		private static string CREATE_PHOTO_TAG_TABLE =
 		    "create table tag (\n"
 		    + " photoid varchar(25),\n"
-		    + " tag varchar(56),\n"
-		    + " isdirty integer default 0,\n"
-		    + " isdeleted integer default 0\n"
+		    + " tag varchar(56)\n"
 		    + ");";
 		
 		private static string SELECT_ALBUMS = "select * from album;";
@@ -149,18 +147,6 @@ using Mono.Data.SqliteClient;
 		  buf.Save(GetSmallImagePath(photoid), "png");
 		}
 		
-		public void InsertPhoto(Photo p) {
-		  IDbCommand dbcmd = dbcon.CreateCommand();
-		  dbcmd.CommandText = p.GetInsertStatement();
-		  dbcmd.ExecuteNonQuery();
-		  foreach (string tag in p.Tags) {
-		    dbcmd = dbcon.CreateCommand();
-		    dbcmd.CommandText = String.Format(
-		        "insert into tag (photoid, tag) values('{0}','{1}');", p.Id, tag);
-		    dbcmd.ExecuteNonQuery();
-		  }
-		}
-		
 		public Photo GetPhoto(String photoid) {
 		  Photo photo = null;
 		  string sqlQuery = String.Format(
@@ -231,7 +217,26 @@ using Mono.Data.SqliteClient;
         return (isdirty == 1);
       } else return false;
 		}
+
+		public void InsertPhoto(Photo p) {
+		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  string safeTitle = p.Title.Replace("'", "''"); // try with \'
+		  string safeDesc = p.Description.Replace("'", "''");
+		  dbcmd.CommandText = String.Format(
+		      "insert into photo (id, title, desc, license, ispublic, "
+		      + "isfriend, isfamily, lastupdate) values('{0}','{1}','{2}',{3}"
+		      + ",{4},{5},{6},'{7}');",
+		       p.Id, safeTitle, safeDesc, p.License, p.IsPublic, p.IsFriend,
+		       p.IsFamily, p.LastUpdate);
+		  dbcmd.ExecuteNonQuery();
+		  foreach (string tag in p.Tags) {
+		    InsertTag(p.Id, tag);
+		  }
+		}
 		
+		// This method doesn't delete the photo from album. The reason is
+		// that insertion and deletion of photo is independent of its
+		// inclusion in certain sets.
 		public void DeletePhoto(string photoid) {
 		  // Delete the photo from database.
 		  IDbCommand dbcmd = dbcon.CreateCommand();
@@ -240,12 +245,11 @@ using Mono.Data.SqliteClient;
 		  dbcmd.ExecuteNonQuery();
 		  
 		  // Now delete the tags.
-		  dbcmd = dbcon.CreateCommand();
-		  dbcmd.CommandText = String.Format(
-		      "delete from tag where photoid='{0}';", photoid);
-		  dbcmd.ExecuteNonQuery();
+		  DeleteAllTags(photoid);
 		}
 		
+		// This method is mainly meant to be used for updating of photos
+		// done by FlickrCommunicator; during the periodic online checks.
 		public void UpdatePhoto(Photo src) {
 		  if (!HasPhoto(src.Id)) {
 		    InsertPhoto(src);
@@ -265,7 +269,10 @@ using Mono.Data.SqliteClient;
 		 */
 		public void InsertAlbum(Album a) {
 		  IDbCommand dbcmd = dbcon.CreateCommand();
-		  dbcmd.CommandText = a.GetInsertStatement();
+		  dbcmd.CommandText = String.Format(
+		      "insert into album (setid, title, desc, photoid, numpics) "
+		      + "values ('{0}','{1}','{2}',{3},{4});", a.SetId, a.Title, a.Desc,
+		       a.PrimaryPhotoid, a.NumPics);
 		  dbcmd.ExecuteNonQuery();
 		}
 		
@@ -473,6 +480,30 @@ using Mono.Data.SqliteClient;
 		 */
 		public Gdk.Pixbuf GetLicenseThumbnail(string photoid) {
 		  return null;
+		}
+		
+		/*
+		 * Methods to be used by editor.
+		 */
+		public void SavePhoto(Photo p) {
+		  DeletePhoto(p.Id);
+		  InsertPhoto(p);
+		  SetPhotoDirty(p.Id, true);
+		}
+		
+		/*
+		 * Methods to be used by update threads.
+		 */
+		public ArrayList GetDirtyPhotos() {
+		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  dbcmd.CommandText = "select id from photo where isdirty=1;";
+		  IDataReader reader = dbcmd.ExecuteReader();
+		  ArrayList photoids = new ArrayList();
+		  while (reader.Read()) {
+		    string photoid = reader.GetString(0);
+		    photoids.Add(photoid);
+		  }
+		  return photoids;
 		}
 		
 		public string Token
