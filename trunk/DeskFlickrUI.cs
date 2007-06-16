@@ -13,6 +13,9 @@ using Glade;
     Label label1;
     
     [Glade.Widget]
+    Label label12;
+    
+    [Glade.Widget]
     ProgressBar progressbar1;
     
     [Glade.Widget]
@@ -36,18 +39,27 @@ using Glade;
     [Glade.Widget]
     Toolbar toolbar1;
     
-    private static DeskFlickrUI deskflickr = null;
+    [Glade.Widget]
+    EventBox eventbox1;
+
+    [Glade.Widget]
+    EventBox eventbox2;
+    
     public static string ICON_PATH = "icons/Font-Book.ico";
     public static string THUMBNAIL_PATH = "icons/FontBookThumbnail.png";
     public static string FLICKR_ICON = "icons/flickr_logo.gif";
+    
+    private static DeskFlickrUI deskflickr = null;
+    private static Gdk.Color tabselectedcolor = new Gdk.Color(0x6A, 0x79, 0x7A);
+    private static Gdk.Color tabcolor = new Gdk.Color(0xCC, 0xCC, 0xB8);
     
     // Needed to store the order of albums and photos shown in
     // left and right panes respectively. These two variables just store
     // the ids of sets and photos respectively.
     private ArrayList _albums;
     private ArrayList _photos;
-    
     private int leftcurselectedindex;
+    
     
 		private DeskFlickrUI() {
 		  _albums = new ArrayList();
@@ -70,7 +82,8 @@ using Glade;
 		  SetLeftTextView();
 		  SetLeftTreeView();
 		  SetRightTreeView();
-		  SetToolBar();
+		  SetHorizontalToolBar();
+		  SetVerticalBar();
 		  // Set window properties
 		  window1.SetIconFromFile(ICON_PATH);
 		  window1.DeleteEvent += OnWindowDeleteEvent;
@@ -138,22 +151,23 @@ using Glade;
       treeview1.AppendColumn ("Title", titleRenderer, "markup", 1);
       treeview1.HeadersVisible = false;
       treeview1.Model = null;
-      treeview1.Selection.Changed += OnSelectionLeftTreeChanged;
+      
+      // treeview1.CursorChanged += OnAlbumSelection;
+      treeview1.Selection.Changed += OnSelectionLeftTree;
       treeview1.RowActivated += new RowActivatedHandler(OnDoubleClickLeftView);
       PopulateAlbumTreeView();
 		}
 		
 		// This method is a general purpose method, meant to take of changes
 		// done to albums, or tags, shown in the left pane.
-		private void OnSelectionLeftTreeChanged(object o, EventArgs args) {
-		
+		private void OnSelectionLeftTree(object o, EventArgs args) {
       TreePath[] treepaths = ((TreeSelection)o).GetSelectedRows();
+      Console.WriteLine("Onselectionlefttree, treepaths: " + treepaths.Length);
       if (treepaths.Length > 0) {
         leftcurselectedindex = (treepaths[0]).Indices[0];
-      } else {
-        return;
-      }
+      } else return;
       
+      Console.WriteLine("on selection left tree, leftcurselected: " + leftcurselectedindex);
       TextBuffer buf = textview2.Buffer;
       buf.Clear();
       // It is obvious that there would be at least one album, because
@@ -171,7 +185,6 @@ using Glade;
       buf.ApplyTag("paragraph", end, buf.EndIter);
       textview2.Buffer = buf;
       textview2.ShowAll();
-        
       // Set photos here
       PopulatePhotosTreeView(setid);
 		}
@@ -184,6 +197,7 @@ using Glade;
 		}
 		
 		public void PopulatePhotosTreeView(string setid) {
+		  Console.WriteLine("populating photos for set: " + setid);
 		  Gtk.ListStore photoStore = (Gtk.ListStore) treeview2.Model;
 		  if (photoStore == null) {
 		    photoStore = new Gtk.ListStore(typeof(Gdk.Pixbuf), typeof(string),
@@ -195,7 +209,7 @@ using Glade;
 		  _photos.Clear();
 		  foreach (Photo p in PersistentInformation.
 		      GetInstance().GetPhotosForAlbum(setid)) {
-		      
+		    
         System.Text.StringBuilder pangoTitle = new System.Text.StringBuilder();
         pangoTitle.AppendFormat(
             "<span font_desc='Times Bold 10'>{0}</span>", p.Title);
@@ -217,6 +231,7 @@ using Glade;
 		                            pangoTags, pangoPrivacy, pangoLicense);
 		    _photos.Add(p.Id);
 		  }
+		  Console.WriteLine("added photos: " + _photos.Count);
 		  treeview2.Model = photoStore;
 		  treeview2.ShowAll();
     }
@@ -284,18 +299,41 @@ using Glade;
   		}
 		}
 		
-		private void SetToolBar() {
+		private void SetHorizontalToolBar() {
 		  ToolButton editbutton = new ToolButton(Stock.Edit);
 		  editbutton.IsImportant = true;
 		  editbutton.Sensitive = true;
 		  editbutton.Clicked += new EventHandler(EditButtonClicked);
 		  toolbar1.Insert(editbutton, -1);
-		  
-//		  ToolButton quitbutton = new ToolButton(Stock.Quit);
-//		  quitbutton.IsImportant = true;
-//		  quitbutton.Sensitive = true;
-//		  quitbutton.Clicked += new EventHandler(OnWindowDeleteEvent);
-//		  toolbar1.Insert(quitbutton, -1);
+		}
+		
+		private void SetVerticalBar() {
+      Label albumLabel = new Label();
+      albumLabel.Markup = "<span foreground='white'>Sets</span>";
+      albumLabel.Angle = 90;
+      eventbox1.Add(albumLabel);
+      eventbox1.ButtonPressEvent += AlbumTabSelected;
+      
+      Label tagLabel = new Label();
+      tagLabel.Markup = "<span foreground='white'>Tags</span>";
+      tagLabel.Angle = 90;
+      eventbox2.Add(tagLabel);
+      eventbox2.ButtonPressEvent += TagTabSelected;
+      
+      // Set the default tab.
+      AlbumTabSelected(null, null);
+		}
+		
+		private void AlbumTabSelected(object o, EventArgs args) {
+		  Console.WriteLine("Albums tab selected");
+		  eventbox1.ModifyBg(StateType.Normal, tabselectedcolor);
+		  eventbox2.ModifyBg(StateType.Normal, tabcolor);
+		}
+		
+		private void TagTabSelected(object o, EventArgs args) {
+		  Console.WriteLine("Tag tab selected");
+		  eventbox1.ModifyBg(StateType.Normal, tabcolor);
+		  eventbox2.ModifyBg(StateType.Normal, tabselectedcolor);
 		}
 		
 		public static DeskFlickrUI GetInstance() {
