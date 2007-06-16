@@ -136,7 +136,9 @@ using FlickrNet;
 		    DeskFlickrUI.GetInstance().SetLimitsProgressBar(sets.Length);
 		  });
 		  
+      ArrayList setids = new ArrayList();
 		  foreach (Photoset s in sets) {
+		    setids.Add(s.PhotosetId);
 		    Album album = new Album(s.PhotosetId, s.Title, 
 		                            s.Description, s.PrimaryPhotoId, 
 		                            s.NumberOfPhotos);
@@ -149,6 +151,10 @@ using FlickrNet;
 		      DeskFlickrUI.GetInstance().IncrementProgressBar(1);
 		    });
 		  }
+
+		  PersistentInformation.GetInstance().OrderedSetsList =
+		      Utils.GetDelimitedString(setids, ",");
+		  
 		  Gtk.Application.Invoke (delegate {
 		    DeskFlickrUI.GetInstance().SetStatusLabel("Done");
 		    DeskFlickrUI.GetInstance().SetValueProgressBar(0);

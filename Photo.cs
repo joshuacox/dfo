@@ -61,7 +61,7 @@ using System.Collections;
       get {
         if (tags == null)
           return "";
-        return Utils.GetTagString(tags);
+        return Utils.GetDelimitedString(tags, " ");
       }
 		}
 		

@@ -4,8 +4,8 @@ using System.Collections;
 
 	public class Utils
 	{
-		public static string GetTagString(ArrayList tagslist) {
-		  return String.Join(" ", (string[]) tagslist.ToArray(typeof(string)));
+		public static string GetDelimitedString(ArrayList list, string delimiter) {
+		  return String.Join(delimiter, (string[]) list.ToArray(typeof(string)));
 		}
 		
 		public static ArrayList GetIntersection(ArrayList src, ArrayList dst) {

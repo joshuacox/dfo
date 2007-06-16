@@ -87,6 +87,8 @@ using Glade;
       }
       this._albums.Clear();
       
+      // Temporarily store treeiters
+      ArrayList treeiters = new ArrayList();
       foreach (Album a in PersistentInformation.GetInstance().GetAlbums()) {
         Photo primaryPhoto = PersistentInformation.GetInstance().
             GetPhoto(a.PrimaryPhotoid);
@@ -101,12 +103,14 @@ using Glade;
         info.AppendLine();
         info.AppendFormat(
             "<span font_desc='Times Bold 10'>{0} pics</span>", a.NumPics);
-        albumStore.AppendValues(thumbnail, info.ToString());
-        
+        TreeIter curiter = albumStore.AppendValues(thumbnail, info.ToString());
+        treeiters.Add(curiter);
         // Now add the setid to albums.
         this._albums.Add(a.SetId);
       }
       treeview1.Model = albumStore;
+      TreeIter curIter = (TreeIter) treeiters[leftcurselectedindex];
+      treeview1.Selection.SelectIter(curIter);
       treeview1.ShowAll();
     }
     
@@ -135,6 +139,7 @@ using Glade;
       treeview1.HeadersVisible = false;
       treeview1.Model = null;
       treeview1.Selection.Changed += OnSelectionLeftTreeChanged;
+      treeview1.RowActivated += new RowActivatedHandler(OnDoubleClickLeftView);
       PopulateAlbumTreeView();
 		}
 		
@@ -145,6 +150,8 @@ using Glade;
       TreePath[] treepaths = ((TreeSelection)o).GetSelectedRows();
       if (treepaths.Length > 0) {
         leftcurselectedindex = (treepaths[0]).Indices[0];
+      } else {
+        return;
       }
       
       TextBuffer buf = textview2.Buffer;
@@ -167,6 +174,13 @@ using Glade;
         
       // Set photos here
       PopulatePhotosTreeView(setid);
+		}
+		
+		public void OnDoubleClickLeftView(object o, RowActivatedArgs args) {
+		  int index = args.Path.Indices[0];
+		  string setid = (string)_albums[index];
+		  Album album = PersistentInformation.GetInstance().GetAlbum(setid);
+		  AlbumEditorUI editor = new AlbumEditorUI(album);
 		}
 		
 		public void PopulatePhotosTreeView(string setid) {
@@ -250,14 +264,24 @@ using Glade;
 		}
 				
 		private void EditButtonClicked(object o, EventArgs args) {
-		  ArrayList selectedphotos = new ArrayList();
-      foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
-        int index = path.Indices[0];
-        Photo p = PersistentInformation.GetInstance()
-                                       .GetPhoto((string)_photos[index]);
-        selectedphotos.Add(p);
-      }
-      PhotoEditorUI photoeditor = new PhotoEditorUI(selectedphotos);
+		  
+		  // Check right tree first.
+		  if (treeview2.Selection.GetSelectedRows().Length > 0) {
+		    ArrayList selectedphotos = new ArrayList();
+        foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
+          string photoid = (string) _photos[path.Indices[0]];
+          Photo p = PersistentInformation.GetInstance()
+                                         .GetPhoto(photoid);
+          selectedphotos.Add(p);
+        }
+        PhotoEditorUI photoeditor = new PhotoEditorUI(selectedphotos);
+  		} // check left tree now.
+  		else if (treeview1.Selection.GetSelectedRows().Length > 0) {
+  		  TreePath path = treeview1.Selection.GetSelectedRows()[0];
+  		  string setid = (string) _albums[path.Indices[0]];
+  		  Album a = PersistentInformation.GetInstance().GetAlbum(setid);
+  		  AlbumEditorUI editor = new AlbumEditorUI(a);
+  		}
 		}
 		
 		private void SetToolBar() {

@@ -87,6 +87,7 @@ using Glade;
 		  gxml.Autoconnect (this);
 		  
 		  window2.Title = "Edit information for " + selectedphotos.Count + " photos";
+		  window2.SetIconFromFile(DeskFlickrUI.ICON_PATH);
 		  notebook1.SetTabLabelText(notebook1.CurrentPageWidget, "Information");
 		  notebook1.NextPage();
 		  notebook1.SetTabLabelText(notebook1.CurrentPageWidget, "Tags");
@@ -131,6 +132,7 @@ using Glade;
       } else {
         EmbedCommonInformation();
       }
+
 		  window2.ShowAll();
 		}
 		
@@ -239,7 +241,7 @@ using Glade;
 		  {
 		  combobox1.Active = commonPrivacy;
 		  combobox2.Active = commonLicense;
-		  textview3.Buffer.Text = Utils.GetTagString(tagschosen);
+		  textview3.Buffer.Text = Utils.GetDelimitedString(tagschosen, " ");
 		  }
 		  ignorechangedevent = false;
 		  
@@ -259,7 +261,7 @@ using Glade;
 		  {
 		  combobox1.Active = GetIndexOfPrivacyBox(p);
 		  combobox2.Active = GetIndexOfLicenseBox(p);
-		  textview3.Buffer.Text = Utils.GetTagString(p.Tags);
+		  textview3.Buffer.Text = Utils.GetDelimitedString(p.Tags, " ");
 		  }
 		  ignorechangedevent = false;
 		  
@@ -297,7 +299,7 @@ using Glade;
 		  }
 		  
 		  ignorechangedevent = true;
-		  textview3.Buffer.Text = Utils.GetTagString(tagschosen);
+		  textview3.Buffer.Text = Utils.GetDelimitedString(tagschosen, " ");
 		  ignorechangedevent = false;
 		}
 		
