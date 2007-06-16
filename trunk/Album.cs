@@ -69,10 +69,7 @@ using System;
 		
 		public int NumPics {
 		  get {
-		    return numpics;
-		  }
-		  set {
-		    numpics = value;
+		    return PersistentInformation.GetInstance().GetNumPhotosForAlbum(setid);
 		  }
 		}
 	}

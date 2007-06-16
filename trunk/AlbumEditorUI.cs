@@ -1,4 +1,3 @@
-
 using System;
 using Gtk;
 using Glade;
@@ -77,6 +76,6 @@ using Glade;
 		public void OnSaveButtonClicked(object o, EventArgs args) {
 		  PersistentInformation.GetInstance().SaveAlbum(_album);
 		  window3.Destroy();
-		  DeskFlickrUI.GetInstance().PopulateAlbumTreeView();
+		  DeskFlickrUI.GetInstance().PopulateAlbums();
 		}
 	}
