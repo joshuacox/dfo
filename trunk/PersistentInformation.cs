@@ -14,6 +14,8 @@ using Mono.Data.SqliteClient;
 		
 		private static string GCONF_APP_PATH = "/apps/DesktopFlickrOrganizer";
 		private static string SECRET_TOKEN = GCONF_APP_PATH + "/token";
+		private static string ORDERED_SETS_LIST = GCONF_APP_PATH + "/sets";
+		
 		private static string HOME = 
 		    System.Environment.GetEnvironmentVariable("HOME") + "/.desktopflickr";
 		private static string THUMBNAIL_DIR = HOME + "/thumbnails";
@@ -269,9 +271,11 @@ using Mono.Data.SqliteClient;
 		 */
 		public void InsertAlbum(Album a) {
 		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  string safetitle = a.Title.Replace("'", "''");
+		  string safedesc = a.Desc.Replace("'", "''");
 		  dbcmd.CommandText = String.Format(
 		      "insert into album (setid, title, desc, photoid, numpics) "
-		      + "values ('{0}','{1}','{2}',{3},{4});", a.SetId, a.Title, a.Desc,
+		      + "values ('{0}','{1}','{2}',{3},{4});", a.SetId, safetitle, safedesc,
 		       a.PrimaryPhotoid, a.NumPics);
 		  dbcmd.ExecuteNonQuery();
 		}
@@ -291,9 +295,7 @@ using Mono.Data.SqliteClient;
 		  IDbCommand dbcmd = dbcon.CreateCommand();
 		  dbcmd.CommandText = String.Format(
 		      "select * from album where setid = '{0}';", setid);
-		  Console.WriteLine("Going to execute: " + dbcmd.CommandText);
 		  IDataReader reader = dbcmd.ExecuteReader();
-		  Console.WriteLine("Executed the command");
 		  if (reader.Read()) {
         setid = reader.GetString(0);
         string title = reader.GetString(1);
@@ -328,6 +330,8 @@ using Mono.Data.SqliteClient;
       } else return false;
     }
 		
+		// This method doesn't remove the photos associated with the album.
+		// It deletes only the entry in album table.
 		public void DeleteAlbum(string setid) {
 		  IDbCommand dbcmd = dbcon.CreateCommand();
 		  dbcmd.CommandText = String.Format(
@@ -348,6 +352,11 @@ using Mono.Data.SqliteClient;
 		
 		public ArrayList GetAlbums() {
 		  ArrayList albums = new ArrayList();
+		  foreach (string setid in OrderedSetsList.Split(',')) {
+		    Album a = GetAlbum(setid);
+		    if (a != null) albums.Add(a);
+		  }
+		  // Now check for those albums which are not present in the ordered list.
       IDbCommand dbcmd = dbcon.CreateCommand();
 		  dbcmd.CommandText = SELECT_ALBUMS;
 		  IDataReader reader = dbcmd.ExecuteReader();
@@ -358,7 +367,11 @@ using Mono.Data.SqliteClient;
         string photoid = reader.GetString(3);
         int numpics = reader.GetInt32(4);
         Album album = new Album(setid, title, desc, photoid, numpics);
-        albums.Add(album);
+        bool ispresent = false;
+        foreach (Album a in albums) {
+          if (album.IsEqual(a)) ispresent = true;
+        }
+        if (!ispresent) albums.Add(album);
       }
        // clean up
       reader.Close();
@@ -491,6 +504,12 @@ using Mono.Data.SqliteClient;
 		  SetPhotoDirty(p.Id, true);
 		}
 		
+		public void SaveAlbum(Album a) {
+		  DeleteAlbum(a.SetId);
+		  InsertAlbum(a);
+		  SetAlbumDirty(a.SetId, true);
+		}
+		
 		/*
 		 * Methods to be used by update threads.
 		 */
@@ -506,19 +525,37 @@ using Mono.Data.SqliteClient;
 		  return photoids;
 		}
 		
+		/*
+		 * Methods talking to gconf
+		 */
 		public string Token
 		{
 		  get {
 		    string token;
 		    try {
-		      token = (string) GetInstance().client.Get(SECRET_TOKEN);
+		      token = (string) client.Get(SECRET_TOKEN);
 		    } catch (GConf.NoSuchKeyException) {
 		      token = "";
 		    }
 		    return token;
 		  }
 		  set {
-		    GetInstance().client.Set(SECRET_TOKEN, value);
+		    client.Set(SECRET_TOKEN, value);
+		  }
+		}
+		
+		public string OrderedSetsList {
+		  get {
+		    string list;
+		    try {
+		      list = (string) client.Get(ORDERED_SETS_LIST);
+		    } catch (GConf.NoSuchKeyException) {
+		      list = "";
+		    }
+		    return list;
+		  }
+		  set {
+		    client.Set(ORDERED_SETS_LIST, value);
 		  }
 		}
 	}
