@@ -45,6 +45,12 @@ using Glade;
     [Glade.Widget]
     EventBox eventbox2;
     
+    [Glade.Widget]
+    EventBox eventbox3;
+    
+    [Glade.Widget]
+    Label label11;
+    
     public static string ICON_PATH = "icons/Font-Book.ico";
     public static string THUMBNAIL_PATH = "icons/FontBookThumbnail.png";
     public static string FLICKR_ICON = "icons/flickr_logo.gif";
@@ -58,13 +64,20 @@ using Glade;
     // the ids of sets and photos respectively.
     private ArrayList _albums;
     private ArrayList _photos;
+    private ArrayList _tags;
     private int leftcurselectedindex;
-    
-    
+    private int selectedtab;
+    private TargetEntry[] targets;
+
 		private DeskFlickrUI() {
 		  _albums = new ArrayList();
 		  _photos = new ArrayList();
+		  _tags = new ArrayList();
 		  leftcurselectedindex = 0;
+		  selectedtab = 0;
+      targets = new TargetEntry[] {
+        new TargetEntry("text/plain", 0, 0)
+      };
 		}
 		
 		public void CreateGUI() {
@@ -84,6 +97,8 @@ using Glade;
 		  SetRightTreeView();
 		  SetHorizontalToolBar();
 		  SetVerticalBar();
+		  SetFlamesWindow();
+		  
 		  // Set window properties
 		  window1.SetIconFromFile(ICON_PATH);
 		  window1.DeleteEvent += OnWindowDeleteEvent;
@@ -91,7 +106,7 @@ using Glade;
 		  Application.Run();
 		}
 	
-    public void PopulateAlbumTreeView() {
+    public void PopulateAlbums() {
       Gtk.ListStore albumStore = (Gtk.ListStore) treeview1.Model;
       if (albumStore == null) {
         albumStore = new Gtk.ListStore(typeof(Gdk.Pixbuf), typeof(string));
@@ -127,6 +142,36 @@ using Glade;
       treeview1.ShowAll();
     }
     
+    public void PopulateTags() {
+      Gtk.ListStore tagStore = (Gtk.ListStore) treeview1.Model;
+      if (tagStore == null) {
+        tagStore = new Gtk.ListStore(typeof(Gdk.Pixbuf), typeof(string));
+      } else {
+        tagStore.Clear();
+      }
+      this._tags.Clear();
+      
+      ArrayList treeiters = new ArrayList();
+      foreach (Tag tag in PersistentInformation.GetInstance().GetAllTags()) {
+        Photo p = 
+            PersistentInformation.GetInstance().GetSinglePhotoForTag(tag.Name);
+        System.Text.StringBuilder info = new System.Text.StringBuilder();
+        info.AppendFormat(
+            "<span font_desc='Times Bold 10'>{0}</span>", tag.Name);
+        info.AppendLine();
+        info.AppendFormat(
+            "<span font_desc='Times Bold 10'>{0} pics</span>", tag.NumberOfPics);
+        TreeIter curiter = tagStore.AppendValues(p.Thumbnail, info.ToString());
+        treeiters.Add(curiter);
+        // Now add the tag name to _tags.
+        this._tags.Add(tag.Name);
+      }
+      treeview1.Model = tagStore;
+      TreeIter curIter = (TreeIter) treeiters[leftcurselectedindex];
+      treeview1.Selection.SelectIter(curIter);
+      treeview1.ShowAll();
+    }
+    
     private void SetLeftTextView() {
       TextTag tag = new TextTag("headline");
       tag.Font = "Times Bold 12";
@@ -140,7 +185,7 @@ using Glade;
       tag.ForegroundGdk = new Gdk.Color(0, 0, 0x99);
       textview2.Buffer.TagTable.Add(tag);
     }
-    
+      
 		private void SetLeftTreeView() {
 		  // Set tree view 1
 		  Gtk.CellRendererText titleRenderer = new Gtk.CellRendererText();
@@ -152,52 +197,96 @@ using Glade;
       treeview1.HeadersVisible = false;
       treeview1.Model = null;
       
-      // treeview1.CursorChanged += OnAlbumSelection;
+      // Drag and drop mechanism
+      treeview1.EnableModelDragDest(targets, Gdk.DragAction.Copy);
+      treeview1.DragDataReceived += OnPhotoDraggedForAddition;
+                       
+      // Can use CursorChanged if need to get an event on every click.
       treeview1.Selection.Changed += OnSelectionLeftTree;
       treeview1.RowActivated += new RowActivatedHandler(OnDoubleClickLeftView);
-      PopulateAlbumTreeView();
+      AlbumTabSelected(null, null);
+		}
+		
+		// Don't really care about the selection data sent. Because, we can
+		// rather easily just look at the selected photos.
+		private void OnPhotoDraggedForAddition(object o, DragDataReceivedArgs args) {
+		  TreePath path;
+		  TreeViewDropPosition pos;
+		  // This line determines the destination row.
+		  treeview1.GetDestRowAtPos(args.X, args.Y, out path, out pos);
+		  if (path == null) return;
+		  int destindex = path.Indices[0];
+		  
+		  if (selectedtab == 0) { // albums
+		    Console.WriteLine(treeview2.Selection.GetSelectedRows().Length);
+		    foreach (TreePath tp in treeview2.Selection.GetSelectedRows()) {
+		      string photoid = (string) _photos[tp.Indices[0]];
+		      string setid = (string) _albums[destindex];
+		      PersistentInformation.GetInstance()
+		          .AddPhotoToAlbum(photoid, setid);
+		      PersistentInformation.GetInstance()
+		          .SetAlbumToPhotoDirty(photoid, setid, true);
+		    }
+		    PopulateAlbums();
+		  } else if (selectedtab == 1) { // tags
+		    foreach (TreePath tp in treeview2.Selection.GetSelectedRows()) {
+		      string photoid = (string) _photos[tp.Indices[0]];
+		      string tag = (string) _tags[destindex];
+		      PersistentInformation.GetInstance().InsertTag(photoid, tag);
+		      PersistentInformation.GetInstance().SetPhotoDirty(photoid, true);
+		    }
+		    PopulateTags();
+		  }
 		}
 		
 		// This method is a general purpose method, meant to take of changes
 		// done to albums, or tags, shown in the left pane.
 		private void OnSelectionLeftTree(object o, EventArgs args) {
       TreePath[] treepaths = ((TreeSelection)o).GetSelectedRows();
-      Console.WriteLine("Onselectionlefttree, treepaths: " + treepaths.Length);
       if (treepaths.Length > 0) {
         leftcurselectedindex = (treepaths[0]).Indices[0];
       } else return;
-      
-      Console.WriteLine("on selection left tree, leftcurselected: " + leftcurselectedindex);
-      TextBuffer buf = textview2.Buffer;
-      buf.Clear();
-      // It is obvious that there would be at least one album, because
-      // otherwise left treeview model wouldn't be formed, and the user
-      // would have nothing to click upon.
-      string setid = (string) _albums[leftcurselectedindex];
-      Album album = PersistentInformation.GetInstance().GetAlbum(setid);
-      // Set the buffer here.
-      buf.Text = "\n" + album.Title + "\n\n" + album.Desc;
-      TextIter start;
-      TextIter end;
-      start = buf.GetIterAtLine(1);
-      end = buf.GetIterAtLine(2);
-      buf.ApplyTag("headline", start, end);
-      buf.ApplyTag("paragraph", end, buf.EndIter);
-      textview2.Buffer = buf;
-      textview2.ShowAll();
-      // Set photos here
-      PopulatePhotosTreeView(setid);
+
+      ArrayList photos = null;
+      if (selectedtab == 0) {
+        TextBuffer buf = textview2.Buffer;
+        buf.Clear();
+        // It is obvious that there would be at least one album, because
+        // otherwise left treeview model wouldn't be formed, and the user
+        // would have nothing to click upon.
+        string setid = (string) _albums[leftcurselectedindex];
+        Album album = PersistentInformation.GetInstance().GetAlbum(setid);
+        // Set the buffer here.
+        buf.Text = "\n" + album.Title + "\n\n" + album.Desc;
+        TextIter start;
+        TextIter end;
+        start = buf.GetIterAtLine(1);
+        end = buf.GetIterAtLine(2);
+        buf.ApplyTag("headline", start, end);
+        buf.ApplyTag("paragraph", end, buf.EndIter);
+        textview2.Buffer = buf;
+        textview2.ShowAll();
+        // Set photos here
+        photos = PersistentInformation.GetInstance().GetPhotosForAlbum(setid);
+      } 
+      else if (selectedtab == 1) {
+        string tag = (string) _tags[leftcurselectedindex];
+        photos = PersistentInformation.GetInstance().GetPhotosForTag(tag);
+        textview2.Buffer.Text = "";
+      }
+      PopulatePhotosTreeView(photos);
 		}
 		
 		public void OnDoubleClickLeftView(object o, RowActivatedArgs args) {
+		  if (selectedtab != 0) return; // if not albums, then don't care.
 		  int index = args.Path.Indices[0];
 		  string setid = (string)_albums[index];
 		  Album album = PersistentInformation.GetInstance().GetAlbum(setid);
 		  AlbumEditorUI editor = new AlbumEditorUI(album);
 		}
 		
-		public void PopulatePhotosTreeView(string setid) {
-		  Console.WriteLine("populating photos for set: " + setid);
+		public void PopulatePhotosTreeView(ArrayList photos) {
+		
 		  Gtk.ListStore photoStore = (Gtk.ListStore) treeview2.Model;
 		  if (photoStore == null) {
 		    photoStore = new Gtk.ListStore(typeof(Gdk.Pixbuf), typeof(string),
@@ -207,8 +296,7 @@ using Glade;
 		    photoStore.Clear();
 		  }
 		  _photos.Clear();
-		  foreach (Photo p in PersistentInformation.
-		      GetInstance().GetPhotosForAlbum(setid)) {
+		  foreach (Photo p in photos) {
 		    
         System.Text.StringBuilder pangoTitle = new System.Text.StringBuilder();
         pangoTitle.AppendFormat(
@@ -231,14 +319,23 @@ using Glade;
 		                            pangoTags, pangoPrivacy, pangoLicense);
 		    _photos.Add(p.Id);
 		  }
-		  Console.WriteLine("added photos: " + _photos.Count);
 		  treeview2.Model = photoStore;
 		  treeview2.ShowAll();
     }
     
     public void RefreshPhotosTreeView() {
-      string setid = (string)_albums[leftcurselectedindex];
-      PopulatePhotosTreeView(setid);
+      if (selectedtab == 0) {
+        string setid = (string) _albums[leftcurselectedindex];
+        ArrayList photos = 
+            PersistentInformation.GetInstance().GetPhotosForAlbum(setid);
+        PopulatePhotosTreeView(photos);
+      } 
+      else if (selectedtab == 1) {
+        string tag = (string) _tags[leftcurselectedindex];
+        ArrayList photos =
+            PersistentInformation.GetInstance().GetPhotosForTag(tag);
+        PopulatePhotosTreeView(photos);
+      }
     }
     
 		public void SetRightTreeView() {
@@ -267,6 +364,25 @@ using Glade;
 		  treeview2.Selection.Mode = Gtk.SelectionMode.Multiple;
 		  // Handle double clicks on photos.
 		  treeview2.RowActivated += new RowActivatedHandler(OnDoubleClickPhoto);
+		  
+		  // Allow dragging
+		  treeview2.EnableModelDragSource(Gdk.ModifierType.Button1Mask, 
+		                                  targets, Gdk.DragAction.Copy);
+		  treeview2.DragDataGet += GetDataOfPhotoDragged;
+		  treeview2.DragBegin += BeginDragSetIcon;
+		}
+		
+		private void GetDataOfPhotoDragged(object o, DragDataGetArgs args) {
+      Gdk.Atom[] types = args.Context.Targets;
+      byte[] bytes = System.Text.Encoding.UTF8.GetBytes("");
+		  args.SelectionData.Set(types[0], 8, bytes, bytes.Length);
+		}
+		
+		private void BeginDragSetIcon(object o, DragBeginArgs args) {
+		  TreePath path = treeview2.Selection.GetSelectedRows()[0];
+		  string photoid = (string) _photos[path.Indices[0]];
+		  Photo p = PersistentInformation.GetInstance().GetPhoto(photoid);
+		  Drag.SetIconPixbuf(args.Context, p.Thumbnail, 0, 0);
 		}
 		
 		private void OnDoubleClickPhoto(object o, RowActivatedArgs args) {
@@ -325,15 +441,24 @@ using Glade;
 		}
 		
 		private void AlbumTabSelected(object o, EventArgs args) {
-		  Console.WriteLine("Albums tab selected");
 		  eventbox1.ModifyBg(StateType.Normal, tabselectedcolor);
 		  eventbox2.ModifyBg(StateType.Normal, tabcolor);
+		  selectedtab = 0;
+		  leftcurselectedindex = 0;
+		  label11.Markup = 
+		      "<span style='italic'>Drop photos here to remove from set.</span>";
+		  PopulateAlbums();
 		}
 		
 		private void TagTabSelected(object o, EventArgs args) {
-		  Console.WriteLine("Tag tab selected");
 		  eventbox1.ModifyBg(StateType.Normal, tabcolor);
 		  eventbox2.ModifyBg(StateType.Normal, tabselectedcolor);
+		  selectedtab = 1;
+		  leftcurselectedindex = 0;
+		  textview2.Buffer.Text = "";
+		  label11.Markup = 
+		      "<span style='italic'>Drop photos here to remove tag.</span>";
+		  PopulateTags();
 		}
 		
 		public static DeskFlickrUI GetInstance() {
@@ -391,4 +516,31 @@ using Glade;
       // Quit menu item.
       imagemenuitem5.Activated += new EventHandler(OnWindowDeleteEvent);
     }
+    
+    private void SetFlamesWindow() {
+      eventbox3.ModifyBg(StateType.Normal, tabcolor);
+      Gtk.Drag.DestSet(eventbox3, Gtk.DestDefaults.All, 
+                       targets, Gdk.DragAction.Copy);
+      eventbox3.DragDataReceived += OnPhotoDraggedForDeletion;
+    }
+    
+    private void OnPhotoDraggedForDeletion(object o, DragDataReceivedArgs args) {
+      if (selectedtab == 0) { // albums
+        string setid = (string) _albums[leftcurselectedindex];
+        foreach (TreePath tp in treeview2.Selection.GetSelectedRows()) {
+		      string photoid = (string) _photos[tp.Indices[0]];
+		      PersistentInformation.GetInstance()
+		          .MarkPhotoForDeletionFromAlbum(photoid, setid);
+        }
+        PopulateAlbums();
+      } else if (selectedtab == 1) { // tags
+        string tag = (string) _tags[leftcurselectedindex];
+        foreach (TreePath tp in treeview2.Selection.GetSelectedRows()) {
+		      string photoid = (string) _photos[tp.Indices[0]];
+		      PersistentInformation.GetInstance().DeleteTag(photoid, tag);
+		    }
+		    PopulateTags();
+      } // if else ends here.
+    }
+    
 	}

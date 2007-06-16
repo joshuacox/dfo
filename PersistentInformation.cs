@@ -12,6 +12,8 @@ using Mono.Data.SqliteClient;
 		private GConf.Client client;
 		private IDbConnection dbcon;
 		
+		private static Random rand = new Random();
+		
 		private static string GCONF_APP_PATH = "/apps/DesktopFlickrOrganizer";
 		private static string SECRET_TOKEN = GCONF_APP_PATH + "/token";
 		private static string ORDERED_SETS_LIST = GCONF_APP_PATH + "/sets";
@@ -41,7 +43,6 @@ using Mono.Data.SqliteClient;
         + " title varchar(256),\n"
         + " desc text,\n"
         + " photoid varchar(10),\n"
-        + " numpics integer,\n"
         + " isdirty integer default 0\n"
         + ");";
 		
@@ -398,6 +399,24 @@ using Mono.Data.SqliteClient;
 		  dbcmd.ExecuteNonQuery();
 		}
 		
+		public void SetAlbumToPhotoDirty(string photoid, string setid, bool dirty) {
+		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  int isdirty = 0;
+		  if (dirty) isdirty = 1;
+		  dbcmd.CommandText = String.Format(
+		      "update setphoto set isdirty = {0} where setid='{1}' and photoid='{2}';",
+		      isdirty, setid, photoid);
+		  dbcmd.ExecuteNonQuery();
+		}
+		
+		public void MarkPhotoForDeletionFromAlbum(string photoid, string setid) {
+		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  dbcmd.CommandText = String.Format(
+		      "update setphoto set isdirty = 1, isdeleted = 1"
+		      + " where setid='{0}' and photoid='{1}';", setid, photoid);
+		  dbcmd.ExecuteNonQuery();
+		}
+		
 		public void RemovePhotoFromAlbum(string photoid, string setid) {
 		  IDbCommand dbcmd = dbcon.CreateCommand();
 		  dbcmd.CommandText = String.Format(
@@ -413,15 +432,26 @@ using Mono.Data.SqliteClient;
 		  dbcmd.ExecuteNonQuery();
 		}
 		
-		public ArrayList GetPhotosForAlbum(string setid) {
+		public ArrayList GetPhotoIdsForAlbum(string setid) {
+		  ArrayList photoids = new ArrayList();
 		  IDbCommand dbcmd = dbcon.CreateCommand();
 		  dbcmd.CommandText = String.Format(
 		      "select photoid from setphoto where setid='{0}' and isdeleted=0;",
 		      setid);
 		  IDataReader reader = dbcmd.ExecuteReader();
-		  ArrayList photos = new ArrayList();
 		  while (reader.Read()) {
-		    string photoid = reader.GetString(0);
+		    photoids.Add(reader.GetString(0));
+		  }
+		  return photoids;
+		}
+		
+		public int GetNumPhotosForAlbum(string setid) {
+		  return GetPhotoIdsForAlbum(setid).Count;
+		}
+		
+		public ArrayList GetPhotosForAlbum(string setid) {
+		  ArrayList photos = new ArrayList();
+		  foreach (string photoid in GetPhotoIdsForAlbum(setid)) {
 		    Photo photo = this.GetPhoto(photoid);
 		    if (photo != null)
 		      photos.Add(photo);
@@ -443,6 +473,37 @@ using Mono.Data.SqliteClient;
 		  }
 		  tags.Sort();
 		  return tags;
+		}
+		
+		public ArrayList GetPhotoIdsForTag(string tag) {
+		  ArrayList photoids = new ArrayList();
+		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  dbcmd.CommandText = String.Format(
+		      "select photoid from tag where tag='{0}';", tag);
+		  IDataReader reader = dbcmd.ExecuteReader();
+		  while(reader.Read()) {
+		    photoids.Add(reader.GetString(0));
+		  }
+		  return photoids;
+		}
+		
+		public ArrayList GetPhotosForTag(string tag) {
+		  ArrayList photos = new ArrayList();
+		  foreach (string id in GetPhotoIdsForTag(tag)) {
+		    Photo p = GetPhoto(id);
+		    if (p != null) photos.Add(p);
+		  }
+		  return photos;
+		}
+		
+		public Photo GetSinglePhotoForTag(string tag) {
+		  
+		  ArrayList photoids = GetPhotoIdsForTag(tag);
+		  int index = rand.Next(photoids.Count);
+		  
+		  if (photoids.Count > 0) {
+		    return GetPhoto((string) photoids[index]);
+		  } else return null;
 		}
 		
 		public ArrayList GetTags(string photoid) {

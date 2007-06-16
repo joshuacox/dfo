@@ -159,7 +159,7 @@ using FlickrNet;
 		    DeskFlickrUI.GetInstance().SetStatusLabel("Done");
 		    DeskFlickrUI.GetInstance().SetValueProgressBar(0);
 		    DeskFlickrUI.GetInstance().SetProgressBarText("Photo Sets Updated");
-		    DeskFlickrUI.GetInstance().PopulateAlbumTreeView();
+		    DeskFlickrUI.GetInstance().PopulateAlbums();
 		    DeskFlickrUI.GetInstance().ShowAllInWindow();
 		  });
 		}
