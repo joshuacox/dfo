@@ -13,9 +13,6 @@ using Glade;
     Label label1;
     
     [Glade.Widget]
-    Label label12;
-    
-    [Glade.Widget]
     ProgressBar progressbar1;
     
     [Glade.Widget]
@@ -51,6 +48,12 @@ using Glade;
     [Glade.Widget]
     Label label11;
     
+    [Glade.Widget]
+    Label label12;
+    
+    [Glade.Widget]
+    Entry entry5;
+    
     public static string ICON_PATH = "icons/Font-Book.ico";
     public static string THUMBNAIL_PATH = "icons/FontBookThumbnail.png";
     public static string FLICKR_ICON = "icons/flickr_logo.gif";
@@ -60,19 +63,25 @@ using Glade;
     private static Gdk.Color tabcolor = new Gdk.Color(0xCC, 0xCC, 0xB8);
     
     // Needed to store the order of albums and photos shown in
-    // left and right panes respectively. These two variables just store
-    // the ids of sets and photos respectively.
+    // left and right panes respectively. These two variables used to
+    // store just the ids. However, an afterthought suggests that if they 
+    // store the real photo and set objects, it would be more efficient. So,
+    // changing to that.
     private ArrayList _albums;
     private ArrayList _photos;
     private ArrayList _tags;
+
     private int leftcurselectedindex;
     private int selectedtab;
     private TargetEntry[] targets;
 
+    private TreeModelFilter filter;
+    
 		private DeskFlickrUI() {
 		  _albums = new ArrayList();
 		  _photos = new ArrayList();
 		  _tags = new ArrayList();
+		  
 		  leftcurselectedindex = 0;
 		  selectedtab = 0;
       targets = new TargetEntry[] {
@@ -87,7 +96,8 @@ using Glade;
 		  
 		  // Set Text for the label
 		  label1.Text = "Desktop Flickr Organizer";
-      
+      label12.Text = "Search: ";
+      entry5.Changed += OnFilterEntryChanged;
 		  // Set the menu bar
 		  this.SetMenuBar();
 		  // hbox2.Remove(progressbar1);
@@ -134,7 +144,7 @@ using Glade;
         TreeIter curiter = albumStore.AppendValues(thumbnail, info.ToString());
         treeiters.Add(curiter);
         // Now add the setid to albums.
-        this._albums.Add(a.SetId);
+        this._albums.Add(a);
       }
       treeview1.Model = albumStore;
       TreeIter curIter = (TreeIter) treeiters[leftcurselectedindex];
@@ -220,8 +230,8 @@ using Glade;
 		  if (selectedtab == 0) { // albums
 		    Console.WriteLine(treeview2.Selection.GetSelectedRows().Length);
 		    foreach (TreePath tp in treeview2.Selection.GetSelectedRows()) {
-		      string photoid = (string) _photos[tp.Indices[0]];
-		      string setid = (string) _albums[destindex];
+		      string photoid = ((Photo) _photos[tp.Indices[0]]).Id;
+		      string setid = ((Album) _albums[destindex]).SetId;
 		      PersistentInformation.GetInstance()
 		          .AddPhotoToAlbum(photoid, setid);
 		      PersistentInformation.GetInstance()
@@ -230,7 +240,7 @@ using Glade;
 		    PopulateAlbums();
 		  } else if (selectedtab == 1) { // tags
 		    foreach (TreePath tp in treeview2.Selection.GetSelectedRows()) {
-		      string photoid = (string) _photos[tp.Indices[0]];
+		      string photoid = ((Photo) _photos[tp.Indices[0]]).Id;
 		      string tag = (string) _tags[destindex];
 		      PersistentInformation.GetInstance().InsertTag(photoid, tag);
 		      PersistentInformation.GetInstance().SetPhotoDirty(photoid, true);
@@ -254,8 +264,8 @@ using Glade;
         // It is obvious that there would be at least one album, because
         // otherwise left treeview model wouldn't be formed, and the user
         // would have nothing to click upon.
-        string setid = (string) _albums[leftcurselectedindex];
-        Album album = PersistentInformation.GetInstance().GetAlbum(setid);
+        
+        Album album = (Album) _albums[leftcurselectedindex];
         // Set the buffer here.
         buf.Text = "\n" + album.Title + "\n\n" + album.Desc;
         TextIter start;
@@ -267,7 +277,7 @@ using Glade;
         textview2.Buffer = buf;
         textview2.ShowAll();
         // Set photos here
-        photos = PersistentInformation.GetInstance().GetPhotosForAlbum(setid);
+        photos = PersistentInformation.GetInstance().GetPhotosForAlbum(album.SetId);
       } 
       else if (selectedtab == 1) {
         string tag = (string) _tags[leftcurselectedindex];
@@ -280,21 +290,16 @@ using Glade;
 		public void OnDoubleClickLeftView(object o, RowActivatedArgs args) {
 		  if (selectedtab != 0) return; // if not albums, then don't care.
 		  int index = args.Path.Indices[0];
-		  string setid = (string)_albums[index];
-		  Album album = PersistentInformation.GetInstance().GetAlbum(setid);
+		  Album album = (Album) _albums[index];
 		  AlbumEditorUI editor = new AlbumEditorUI(album);
 		}
 		
 		public void PopulatePhotosTreeView(ArrayList photos) {
 		
-		  Gtk.ListStore photoStore = (Gtk.ListStore) treeview2.Model;
-		  if (photoStore == null) {
-		    photoStore = new Gtk.ListStore(typeof(Gdk.Pixbuf), typeof(string),
+		  ListStore photoStore = new Gtk.ListStore(
+		                                   typeof(Gdk.Pixbuf), typeof(string),
 		                                   typeof(string), typeof(string), 
 		                                   typeof(string));
-		  } else {
-		    photoStore.Clear();
-		  }
 		  _photos.Clear();
 		  foreach (Photo p in photos) {
 		    
@@ -317,15 +322,49 @@ using Glade;
             
 		    photoStore.AppendValues(p.Thumbnail, pangoTitle.ToString(), 
 		                            pangoTags, pangoPrivacy, pangoLicense);
-		    _photos.Add(p.Id);
+		    _photos.Add(p);
 		  }
-		  treeview2.Model = photoStore;
+		  filter = new TreeModelFilter(photoStore, null);
+		  filter.VisibleFunc = new TreeModelFilterVisibleFunc(FilterPhotos);
+		  treeview2.Model = filter;
 		  treeview2.ShowAll();
+    }
+    
+    private bool FilterPhotos(TreeModel model, TreeIter iter) {
+      int index = model.GetPath(iter).Indices[0];
+      Photo p = (Photo) _photos[index];
+      return FilterPhoto(p);
+    }
+    
+    private bool FilterPhoto(Photo p) {
+      string query = entry5.Text;
+      if (query == "") return true;
+      bool flag = false;
+      System.StringComparison comp = System.StringComparison.OrdinalIgnoreCase;
+      if (p.Title.IndexOf(query, comp) > -1) flag = true;
+      else if (p.Description.IndexOf(query, comp) > -1) flag = true;
+      else if (p.TagString.IndexOf(query, comp) > -1) flag = true;
+      else if (p.PrivacyInfo.IndexOf(query, comp) > -1) flag = true;
+      else if (p.LicenseInfo.IndexOf(query, comp) > -1) flag = true;
+      return flag;
+    }
+    
+    private Photo GetPhoto(TreePath path) {
+      int filteredindex = path.Indices[0];
+      ArrayList filteredPhotos = new ArrayList();
+      foreach (Photo p in _photos) {
+        if (FilterPhoto(p)) filteredPhotos.Add(p);
+      }
+      return (Photo) filteredPhotos[filteredindex];
+    }
+    
+    private void OnFilterEntryChanged(object o, EventArgs args) {
+      filter.Refilter();
     }
     
     public void RefreshPhotosTreeView() {
       if (selectedtab == 0) {
-        string setid = (string) _albums[leftcurselectedindex];
+        string setid = ((Album) _albums[leftcurselectedindex]).SetId;
         ArrayList photos = 
             PersistentInformation.GetInstance().GetPhotosForAlbum(setid);
         PopulatePhotosTreeView(photos);
@@ -380,16 +419,13 @@ using Glade;
 		
 		private void BeginDragSetIcon(object o, DragBeginArgs args) {
 		  TreePath path = treeview2.Selection.GetSelectedRows()[0];
-		  string photoid = (string) _photos[path.Indices[0]];
-		  Photo p = PersistentInformation.GetInstance().GetPhoto(photoid);
+		  Photo p = GetPhoto(path);
 		  Drag.SetIconPixbuf(args.Context, p.Thumbnail, 0, 0);
 		}
 		
 		private void OnDoubleClickPhoto(object o, RowActivatedArgs args) {
 		  ArrayList selectedphotos = new ArrayList();
-		  int index = args.Path.Indices[0];
-      Photo p = PersistentInformation.GetInstance()
-                                     .GetPhoto((string)_photos[index]);
+      Photo p = GetPhoto(args.Path);
       selectedphotos.Add(p);
 		  PhotoEditorUI photoeditor = new PhotoEditorUI(selectedphotos);
 		}
@@ -400,17 +436,14 @@ using Glade;
 		  if (treeview2.Selection.GetSelectedRows().Length > 0) {
 		    ArrayList selectedphotos = new ArrayList();
         foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
-          string photoid = (string) _photos[path.Indices[0]];
-          Photo p = PersistentInformation.GetInstance()
-                                         .GetPhoto(photoid);
+          Photo p = GetPhoto(path);
           selectedphotos.Add(p);
         }
         PhotoEditorUI photoeditor = new PhotoEditorUI(selectedphotos);
   		} // check left tree now.
   		else if (treeview1.Selection.GetSelectedRows().Length > 0) {
   		  TreePath path = treeview1.Selection.GetSelectedRows()[0];
-  		  string setid = (string) _albums[path.Indices[0]];
-  		  Album a = PersistentInformation.GetInstance().GetAlbum(setid);
+  		  Album a = (Album) _albums[path.Indices[0]];
   		  AlbumEditorUI editor = new AlbumEditorUI(a);
   		}
 		}
@@ -526,17 +559,17 @@ using Glade;
     
     private void OnPhotoDraggedForDeletion(object o, DragDataReceivedArgs args) {
       if (selectedtab == 0) { // albums
-        string setid = (string) _albums[leftcurselectedindex];
-        foreach (TreePath tp in treeview2.Selection.GetSelectedRows()) {
-		      string photoid = (string) _photos[tp.Indices[0]];
+        string setid = ((Album) _albums[leftcurselectedindex]).SetId;
+        foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
+		      string photoid = GetPhoto(path).Id;
 		      PersistentInformation.GetInstance()
 		          .MarkPhotoForDeletionFromAlbum(photoid, setid);
         }
         PopulateAlbums();
       } else if (selectedtab == 1) { // tags
         string tag = (string) _tags[leftcurselectedindex];
-        foreach (TreePath tp in treeview2.Selection.GetSelectedRows()) {
-		      string photoid = (string) _photos[tp.Indices[0]];
+        foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
+		      string photoid = GetPhoto(path).Id;
 		      PersistentInformation.GetInstance().DeleteTag(photoid, tag);
 		    }
 		    PopulateTags();
