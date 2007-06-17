@@ -382,21 +382,39 @@ using Mono.Data.SqliteClient;
 		/*
 		 * Photos assigned to sets and retrieval mechanisms.
 		 */
-		public void AddPhotoToAlbum(string photoid, string setid) {
+		public bool HasAlbumPhoto(string photoid, string setid) {
 		  IDbCommand dbcmd = dbcon.CreateCommand();
 		  dbcmd.CommandText = String.Format(
 		      "select * from setphoto where setid='{0}' and photoid='{1}';",
 		      setid, photoid);
       if (dbcmd.ExecuteReader().Read()) {
         // Entry already exists, skip insertion
-        return;
-      }
-      
+        return true;
+      } else return false;
+		}
+		
+		public void AddPhotoToAlbum(string photoid, string setid) {
+      if (HasAlbumPhoto(photoid, setid)) return;
 		  // Entry not present in the table, insert it.
+		  IDbCommand dbcmd = dbcon.CreateCommand();
 		  dbcmd.CommandText = String.Format(
 		      "insert into setphoto (setid, photoid) values('{0}','{1}');",
 		      setid, photoid);
 		  dbcmd.ExecuteNonQuery();
+		}
+		
+		public bool IsAlbumToPhotoDirty(string photoid, string setid) {
+		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  dbcmd.CommandText = String.Format(
+		      "select isdirty from setphoto where setid='{0}' and photoid='{1}';",
+		      setid, photoid);
+		  IDataReader reader = dbcmd.ExecuteReader();
+		  if (reader.Read()) {
+		    int isdirty = reader.GetInt32(0);
+		    if (isdirty == 1) return true;
+		    else return false;
+		  }
+		  return false;
 		}
 		
 		public void SetAlbumToPhotoDirty(string photoid, string setid, bool dirty) {
@@ -409,11 +427,27 @@ using Mono.Data.SqliteClient;
 		  dbcmd.ExecuteNonQuery();
 		}
 		
-		public void MarkPhotoForDeletionFromAlbum(string photoid, string setid) {
+		public bool IsAlbumToPhotoMarkedDeleted(string photoid, string setid) {
 		  IDbCommand dbcmd = dbcon.CreateCommand();
 		  dbcmd.CommandText = String.Format(
-		      "update setphoto set isdirty = 1, isdeleted = 1"
-		      + " where setid='{0}' and photoid='{1}';", setid, photoid);
+		      "select isdeleted from setphoto where setid='{0}' and photoid='{1}';",
+		      setid, photoid);
+		  IDataReader reader = dbcmd.ExecuteReader();
+		  if (reader.Read()) {
+		    int isdeleted = reader.GetInt32(0);
+		    if (isdeleted == 1) return true;
+		    else return false;
+		  }
+		  return false;
+		}
+		
+		public void MarkPhotoForDeletionFromAlbum(string photoid, string setid, bool deleted) {
+		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  int isdeleted = 0;
+		  if (deleted) isdeleted = 1;
+		  dbcmd.CommandText = String.Format(
+		      "update setphoto set isdirty = {0}, isdeleted = {0}"
+		      + " where setid='{1}' and photoid='{2}';", isdeleted, setid, photoid);
 		  dbcmd.ExecuteNonQuery();
 		}
 		

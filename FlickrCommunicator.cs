@@ -46,7 +46,6 @@ using FlickrNet;
 		  try {
 		    flickrObj = new Flickr(_apikey, _secret, token);
 		    flickrObj.TestLogin();
-		    Console.WriteLine("tested login");
 		    DeskFlickrUI.GetInstance().SetStatusLabel("Login Successful.");
 		    ThreadStart job = new ThreadStart(RoutineCheck);
 		    Thread t = new Thread(job);

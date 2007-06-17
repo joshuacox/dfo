@@ -228,14 +228,38 @@ using Glade;
 		  int destindex = path.Indices[0];
 		  
 		  if (selectedtab == 0) { // albums
-		    Console.WriteLine(treeview2.Selection.GetSelectedRows().Length);
 		    foreach (TreePath tp in treeview2.Selection.GetSelectedRows()) {
 		      string photoid = ((Photo) _photos[tp.Indices[0]]).Id;
 		      string setid = ((Album) _albums[destindex]).SetId;
-		      PersistentInformation.GetInstance()
-		          .AddPhotoToAlbum(photoid, setid);
-		      PersistentInformation.GetInstance()
-		          .SetAlbumToPhotoDirty(photoid, setid, true);
+		      
+		      // Scenario 1: New photo is being added to set. Insert a new 
+		      // entry to the table, and mark it dirty.
+		      // Scenario 2: A photo is already present in the set. The photo
+		      // is not dirty, and not deleted. User
+		      // tries to insert the same photo in the set again. Nothing
+		      // should happen.
+		      // Scenario 3: A photo has been deleted from the set. User
+		      // tries to add the photo back to the set. The isdirty bit should
+		      // be cleared, same for isdeleted bit.
+		      bool exists = PersistentInformation.GetInstance()
+		          .HasAlbumPhoto(photoid, setid);
+		      if (exists) {
+		        bool isdirty = PersistentInformation.GetInstance()
+		            .IsAlbumToPhotoDirty(photoid, setid);
+		        bool isdeleted = PersistentInformation.GetInstance()
+		            .IsAlbumToPhotoMarkedDeleted(photoid, setid);
+		            
+		        if (!isdirty && !isdeleted) continue;
+		        if (isdeleted) {
+		          PersistentInformation.GetInstance()
+		            .MarkPhotoForDeletionFromAlbum(photoid, setid, false);
+		        }
+		      } else {
+		        PersistentInformation.GetInstance()
+		            .AddPhotoToAlbum(photoid, setid);
+		        PersistentInformation.GetInstance()
+		            .SetAlbumToPhotoDirty(photoid, setid, true);
+		      }
 		    }
 		    PopulateAlbums();
 		  } else if (selectedtab == 1) { // tags
@@ -562,8 +586,26 @@ using Glade;
         string setid = ((Album) _albums[leftcurselectedindex]).SetId;
         foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
 		      string photoid = GetPhoto(path).Id;
-		      PersistentInformation.GetInstance()
-		          .MarkPhotoForDeletionFromAlbum(photoid, setid);
+		      // Scenario 1: A user drags a new photo to set, the photo is added,
+		      // and the entry is marked dirty. Now, he removes the photo from
+		      // the set. So, the entry should be deleted.
+		      // Scenario 2: A user deletes a photo from set. The photo is
+		      // marked for deletion. Somehow (quite
+		      // impossible though), he tries to delete the photo from set again.
+		      // The entry should not be removed, basically, status quo should
+		      // maintain.
+		      bool isdirty = PersistentInformation.GetInstance()
+		                        .IsAlbumToPhotoDirty(photoid, setid);
+		      bool isdeleted = PersistentInformation.GetInstance()
+		                        .IsAlbumToPhotoMarkedDeleted(photoid, setid);
+		                        
+		      if (isdirty && !isdeleted) {
+		        PersistentInformation.GetInstance()
+		                        .RemovePhotoFromAlbum(photoid, setid);
+		      } else {
+		        PersistentInformation.GetInstance()
+		                        .MarkPhotoForDeletionFromAlbum(photoid, setid, true);
+		      }
         }
         PopulateAlbums();
       } else if (selectedtab == 1) { // tags

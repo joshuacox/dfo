@@ -146,7 +146,6 @@ using Glade;
 		
 		private void SetPhotoPrivacyFromBox(ref Photo p, int index) {
 		  if (index == 1) {
-		    Console.WriteLine("Setting photo to be public");
 		    p.IsPublic = 1; p.IsFriend = 0; p.IsFamily = 0;
 		  } else if (index == 2) {
 		    p.IsPublic = 0; p.IsFriend = 1; p.IsFamily = 1;
