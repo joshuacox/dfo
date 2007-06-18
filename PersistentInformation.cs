@@ -175,6 +175,31 @@ using Mono.Data.SqliteClient;
 		  return photo;
 		}
 		
+		public ArrayList GetAllPhotos() {
+		  ArrayList photos = new ArrayList();
+		  string sqlQuery = "select * from photo;";
+		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  dbcmd.CommandText = sqlQuery;
+		  IDataReader reader = dbcmd.ExecuteReader();
+		  while(reader.Read()) {
+		    string id = reader.GetString(0);
+		    string title = reader.GetString(1);
+		    string desc = reader.GetString(2);
+		    int license = reader.GetInt32(3);
+		    int isPublic = reader.GetInt32(4);
+		    int isFriend = reader.GetInt32(5);
+		    int isFamily = reader.GetInt32(6);
+		    string lastupdated = reader.GetString(7);
+		    // Retrieve the thumbnail from thumbnail home directory.
+		    
+		    Photo photo = new Photo(id, title, desc, license, isPublic,
+		                      isFriend, isFamily, lastupdated);
+		    photo.Tags = GetTags(id);
+		    photos.Add(photo);
+		  }
+		  return photos;
+		}
+		
 		public bool HasPhoto(string photoid) {
 		  IDbCommand dbcmd = dbcon.CreateCommand();
 		  dbcmd.CommandText = String.Format(

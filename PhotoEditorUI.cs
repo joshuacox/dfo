@@ -420,6 +420,6 @@ using Glade;
         PersistentInformation.GetInstance().SavePhoto(p);
 		  }
 		  window2.Destroy();
-		  DeskFlickrUI.GetInstance().RefreshPhotosTreeView();
+		  DeskFlickrUI.GetInstance().UpdatePhotos();
 		}
 	}
