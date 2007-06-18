@@ -54,6 +54,8 @@ using Glade;
     [Glade.Widget]
     Entry entry5;
     
+    ToggleToolButton streambutton;
+    
     public static string ICON_PATH = "icons/Font-Book.ico";
     public static string THUMBNAIL_PATH = "icons/FontBookThumbnail.png";
     public static string FLICKR_ICON = "icons/flickr_logo.gif";
@@ -74,6 +76,7 @@ using Glade;
     private int leftcurselectedindex;
     private int selectedtab;
     private TargetEntry[] targets;
+    private ListStore photoStore;
 
     private TreeModelFilter filter;
     
@@ -94,6 +97,10 @@ using Glade;
 		  Glade.XML gxml = new Glade.XML (null, "organizer.glade", "window1", null);
 		  gxml.Autoconnect (this);
 		  
+		  // The value of stream button in this toolbar is being used by
+		  // other initializations. So, this should be positioned _before_ them.
+		  SetHorizontalToolBar();
+		  
 		  // Set Text for the label
 		  label1.Text = "Desktop Flickr Organizer";
       label12.Text = "Search: ";
@@ -105,7 +112,7 @@ using Glade;
 		  SetLeftTextView();
 		  SetLeftTreeView();
 		  SetRightTreeView();
-		  SetHorizontalToolBar();
+
 		  SetVerticalBar();
 		  SetFlamesWindow();
 		  
@@ -214,7 +221,9 @@ using Glade;
       // Can use CursorChanged if need to get an event on every click.
       treeview1.Selection.Changed += OnSelectionLeftTree;
       treeview1.RowActivated += new RowActivatedHandler(OnDoubleClickLeftView);
-      AlbumTabSelected(null, null);
+      // No need to specifically select the album tab, because treeview1's
+      // selection automatically triggers repopulation of photos.
+      // AlbumTabSelected(null, null);
 		}
 		
 		// Don't really care about the selection data sent. Because, we can
@@ -301,14 +310,20 @@ using Glade;
         textview2.Buffer = buf;
         textview2.ShowAll();
         // Set photos here
-        photos = PersistentInformation.GetInstance().GetPhotosForAlbum(album.SetId);
+        if (!streambutton.Active) {
+          photos = PersistentInformation.GetInstance().GetPhotosForAlbum(album.SetId);
+        }
       } 
       else if (selectedtab == 1) {
         string tag = (string) _tags[leftcurselectedindex];
-        photos = PersistentInformation.GetInstance().GetPhotosForTag(tag);
         textview2.Buffer.Text = "";
+        if (!streambutton.Active) {
+          photos = PersistentInformation.GetInstance().GetPhotosForTag(tag);
+        }
       }
-      PopulatePhotosTreeView(photos);
+      if (!streambutton.Active) {
+        PopulatePhotosTreeView(photos);
+      }
 		}
 		
 		public void OnDoubleClickLeftView(object o, RowActivatedArgs args) {
@@ -318,36 +333,48 @@ using Glade;
 		  AlbumEditorUI editor = new AlbumEditorUI(album);
 		}
 		
-		public void PopulatePhotosTreeView(ArrayList photos) {
+		private string GetCol1Data(Photo p) {
+      System.Text.StringBuilder pangoTitle = new System.Text.StringBuilder();
+      pangoTitle.AppendFormat(
+          "<span font_desc='Times Bold 10'>{0}</span>", p.Title);
+      pangoTitle.AppendLine();
+      pangoTitle.AppendFormat(
+          "<span font_desc='Times Italic 10'>{0}</span>", 
+          p.Description);
+      return pangoTitle.ToString();
+		}
 		
-		  ListStore photoStore = new Gtk.ListStore(
-		                                   typeof(Gdk.Pixbuf), typeof(string),
-		                                   typeof(string), typeof(string), 
-		                                   typeof(string));
-		  _photos.Clear();
-		  foreach (Photo p in photos) {
-		    
-        System.Text.StringBuilder pangoTitle = new System.Text.StringBuilder();
-        pangoTitle.AppendFormat(
-            "<span font_desc='Times Bold 10'>{0}</span>", p.Title);
-        pangoTitle.AppendLine();
-        pangoTitle.AppendFormat(
-            "<span font_desc='Times Italic 10'>{0}</span>", 
-            p.Description);
-        
-        string pangoTags = String.Format(
+		private string GetCol2Data(Photo p) {
+      return String.Format(
             "<span font_desc='Times 10'>{0}</span>", 
             p.TagString);
-        string pangoPrivacy = String.Format(
+		}
+		
+		private string GetCol3Data(Photo p) {
+		  return String.Format(
             "<span font_desc='Times 10'>{0}</span>", p.PrivacyInfo);
-        
-        string pangoLicense = String.Format(
+		}
+		
+		private string GetCol4Data(Photo p) {
+		  return String.Format(
             "<span font_desc='Times 10'>{0}</span>", p.LicenseInfo);
-            
-		    photoStore.AppendValues(p.Thumbnail, pangoTitle.ToString(), 
-		                            pangoTags, pangoPrivacy, pangoLicense);
+		}
+		
+		public void PopulatePhotosTreeView(ArrayList photos) {
+		  _photos.Clear();
+		  // Note that whatever change we do to photoStore, i.e. addition or
+		  // editing of entries, filter is triggered. So, we'll create a store
+		  // first, and then just assign this new store to the global photoStore.
+		  ListStore store = new Gtk.ListStore(
+		                                 typeof(Gdk.Pixbuf), typeof(string),
+		                                 typeof(string), typeof(string), 
+		                                 typeof(string));
+		  foreach (Photo p in photos) {
+		    store.AppendValues(p.Thumbnail, GetCol1Data(p), GetCol2Data(p),
+		                            GetCol3Data(p), GetCol4Data(p));
 		    _photos.Add(p);
 		  }
+		  photoStore = store;
 		  filter = new TreeModelFilter(photoStore, null);
 		  filter.VisibleFunc = new TreeModelFilterVisibleFunc(FilterPhotos);
 		  treeview2.Model = filter;
@@ -373,6 +400,9 @@ using Glade;
       return flag;
     }
     
+    // If the user has used search tab, the path
+    // provided here wouldn't exactly show the absolute position in the
+    // model, because entries would have been filtered out.
     private Photo GetPhoto(TreePath path) {
       int filteredindex = path.Indices[0];
       ArrayList filteredPhotos = new ArrayList();
@@ -382,22 +412,56 @@ using Glade;
       return (Photo) filteredPhotos[filteredindex];
     }
     
+    private int GetPhotoIndex(TreePath path) {
+      int filteredindex = path.Indices[0];
+      int findex = -1;
+      int realindex = -1;
+      foreach (Photo p in _photos) {
+        realindex++;
+        if (FilterPhoto(p)) findex++;
+        if (findex == filteredindex) {
+          return realindex;
+        }
+      }
+      return -1;
+    }
+    
     private void OnFilterEntryChanged(object o, EventArgs args) {
       filter.Refilter();
     }
     
+    // This method is used only to refresh the photos in the right pane.
+    // Its not used to populate photos when a tab selection is made,
+    // or stream button is pressed. It doesn't populate new different
+    // set of photos, just is intended to refresh the already existant ones.
     public void RefreshPhotosTreeView() {
-      if (selectedtab == 0) {
+      ArrayList photos = null;
+      if (streambutton.Active) {
+        photos = PersistentInformation.GetInstance().GetAllPhotos();
+      }
+      else if (selectedtab == 0) {
         string setid = ((Album) _albums[leftcurselectedindex]).SetId;
-        ArrayList photos = 
+        photos = 
             PersistentInformation.GetInstance().GetPhotosForAlbum(setid);
-        PopulatePhotosTreeView(photos);
-      } 
+        
+      }
       else if (selectedtab == 1) {
         string tag = (string) _tags[leftcurselectedindex];
-        ArrayList photos =
+        photos =
             PersistentInformation.GetInstance().GetPhotosForTag(tag);
-        PopulatePhotosTreeView(photos);
+      }
+      PopulatePhotosTreeView(photos);
+    }
+    
+    public void UpdatePhotos() {
+      foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
+        Photo p = GetPhoto(path);
+        TreeIter iter;
+        photoStore.GetIter(out iter, path);
+        photoStore.SetValue(iter, 1, GetCol1Data(p));
+        photoStore.SetValue(iter, 2, GetCol2Data(p));
+        photoStore.SetValue(iter, 3, GetCol3Data(p));
+        photoStore.SetValue(iter, 4, GetCol4Data(p));
       }
     }
     
@@ -472,12 +536,28 @@ using Glade;
   		}
 		}
 		
+		private void StreamButtonClicked(object o, EventArgs args) {
+		  if (streambutton.Active) {
+		    PopulatePhotosTreeView(PersistentInformation.GetInstance().GetAllPhotos());
+		  } else {
+		    if (selectedtab == 0) PopulateAlbums();
+		    else if (selectedtab == 1) PopulateTags();
+		  }
+		}
+		
 		private void SetHorizontalToolBar() {
 		  ToolButton editbutton = new ToolButton(Stock.Edit);
 		  editbutton.IsImportant = true;
 		  editbutton.Sensitive = true;
 		  editbutton.Clicked += new EventHandler(EditButtonClicked);
 		  toolbar1.Insert(editbutton, -1);
+		  
+		  streambutton = new ToggleToolButton(Stock.SelectAll);
+		  streambutton.IsImportant = true;
+		  streambutton.Sensitive = true;
+		  streambutton.Label = "Show Stream";
+		  streambutton.Clicked += new EventHandler(StreamButtonClicked);
+		  toolbar1.Insert(streambutton, -1);
 		}
 		
 		private void SetVerticalBar() {
