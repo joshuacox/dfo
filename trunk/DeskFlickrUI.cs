@@ -123,7 +123,7 @@ using Glade;
 		  SetVerticalBar();
 		  SetFlamesWindow();
 		  
-		  SetIsConnected(false);
+		  SetIsConnected(0);
 		  // Set window properties
 		  window1.SetIconFromFile(ICON_PATH);
 		  window1.DeleteEvent += OnWindowDeleteEvent;
@@ -199,6 +199,11 @@ using Glade;
         treeview1.Selection.SelectIter(curIter);
       }
       treeview1.ShowAll();
+    }
+    
+    public void RefreshLeftTreeView() {
+      if (selectedtab == 0) PopulateAlbums();
+      else if (selectedtab == 1) PopulateTags();
     }
     
     private void SetLeftTextView() {
@@ -643,12 +648,15 @@ using Glade;
 		  progressbar1.Text = status;
 		}
 		
-		public void SetIsConnected(bool connected) {
-		  if (connected) {
-		    label13.Text = "Connected";
+		public void SetIsConnected(int connected) {
+		  if (connected == 2) {
+		    label13.Markup = "<span weight='bold'>Busy</span>";
 		    image5.Stock = Stock.Connect;
-		  } else {
-		    label13.Text = "Disconnected";
+		  } else if (connected == 1) {
+		    label13.Markup = "<span weight='bold'>Online</span>";
+		    image5.Stock = Stock.Connect;
+		  } else if (connected == 0) {
+		    label13.Markup = "<span weight='bold'>Offline</span>";
 		    image5.Stock = Stock.Disconnect;
 		  }
 		}
@@ -709,7 +717,7 @@ using Glade;
   	    FlickrCommunicator.GetInstance().Disconnect();
   	    if (_connthread != null) _connthread.Abort();
   	    _connthread = null;
-  	    SetStatusLabel("Done");
+  	    SetStatusLabel("Done. Working Offline");
   	  } else { // Work ON-line.
   	    if (_connthread != null) return;
   	    ThreadStart job = new ThreadStart(PeriodicallyTryConnecting);
@@ -729,12 +737,21 @@ using Glade;
   	      Console.WriteLine("Already busy.. waiting for 5 mins");
   	      Thread.Sleep(5*60*1000); // wait for the connection to be finished.
   	    }
-  	    SetStatusLabel("Attempting connection...");
+  	    Gtk.Application.Invoke (delegate {
+  	      SetStatusLabel("Attempting connection...");
+  	    });
   	    comm.AttemptConnection();
   	    if (comm.IsConnected) comm.RoutineCheck();
-  	    SetStatusLabel("Done");
-  	    Console.WriteLine("Sleeping for 10 mins");
-  	    Thread.Sleep(10*60*1000); // 10 mins in milliseconds.
+  	    Gtk.Application.Invoke (delegate {
+  	      SetStatusLabel("Done. Counting time for reconnection...");
+  	      SetLimitsProgressBar(10);
+  	    });
+  	    for (int i=0; i<10; i++) {
+  	      Thread.Sleep(60*1000);
+  	      Gtk.Application.Invoke (delegate {
+  	        IncrementProgressBar(1);
+  	      });
+  	    }
   	  }
   	}
   	
