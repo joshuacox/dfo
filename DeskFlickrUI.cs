@@ -1,6 +1,7 @@
 
 using System;
 using System.Collections;
+using System.Threading;
 using Gtk;
 using Glade;
 
@@ -19,6 +20,9 @@ using Glade;
     ImageMenuItem imagemenuitem2;
     
     [Glade.Widget]
+    CheckMenuItem checkmenuitem3;
+    
+    [Glade.Widget]
     ImageMenuItem imagemenuitem5;
     
     [Glade.Widget]
@@ -26,9 +30,6 @@ using Glade;
     
     [Glade.Widget]
     TreeView treeview2;
-    
-    [Glade.Widget]
-    HBox hbox2;
     
     [Glade.Widget]
     TextView textview2;
@@ -50,6 +51,12 @@ using Glade;
     
     [Glade.Widget]
     Label label12;
+    
+    [Glade.Widget]
+    Label label13;
+    
+    [Glade.Widget]
+    Image image5;
     
     [Glade.Widget]
     Entry entry5;
@@ -77,8 +84,9 @@ using Glade;
     private int selectedtab;
     private TargetEntry[] targets;
     private ListStore photoStore;
-
     private TreeModelFilter filter;
+    
+    private Thread _connthread;
     
 		private DeskFlickrUI() {
 		  _albums = new ArrayList();
@@ -105,24 +113,24 @@ using Glade;
 		  label1.Text = "Desktop Flickr Organizer";
       label12.Text = "Search: ";
       entry5.Changed += OnFilterEntryChanged;
-		  // Set the menu bar
-		  this.SetMenuBar();
-		  // hbox2.Remove(progressbar1);
 		  
 		  SetLeftTextView();
 		  SetLeftTreeView();
 		  SetRightTreeView();
-
+		  
+		  // Set the menu bar
+		  SetMenuBar();
 		  SetVerticalBar();
 		  SetFlamesWindow();
 		  
+		  SetIsConnected(false);
 		  // Set window properties
 		  window1.SetIconFromFile(ICON_PATH);
 		  window1.DeleteEvent += OnWindowDeleteEvent;
 		  window1.ShowAll();
 		  Application.Run();
 		}
-	
+	  
     public void PopulateAlbums() {
       Gtk.ListStore albumStore = (Gtk.ListStore) treeview1.Model;
       if (albumStore == null) {
@@ -154,8 +162,10 @@ using Glade;
         this._albums.Add(a);
       }
       treeview1.Model = albumStore;
-      TreeIter curIter = (TreeIter) treeiters[leftcurselectedindex];
-      treeview1.Selection.SelectIter(curIter);
+      if (treeiters.Count > 0) {
+        TreeIter curIter = (TreeIter) treeiters[leftcurselectedindex];
+        treeview1.Selection.SelectIter(curIter);
+      }
       treeview1.ShowAll();
     }
     
@@ -184,8 +194,10 @@ using Glade;
         this._tags.Add(tag.Name);
       }
       treeview1.Model = tagStore;
-      TreeIter curIter = (TreeIter) treeiters[leftcurselectedindex];
-      treeview1.Selection.SelectIter(curIter);
+      if (treeiters.Count > 0) {
+        TreeIter curIter = (TreeIter) treeiters[leftcurselectedindex];
+        treeview1.Selection.SelectIter(curIter);
+      }
       treeview1.ShowAll();
     }
     
@@ -330,7 +342,7 @@ using Glade;
 		  if (selectedtab != 0) return; // if not albums, then don't care.
 		  int index = args.Path.Indices[0];
 		  Album album = (Album) _albums[index];
-		  AlbumEditorUI editor = new AlbumEditorUI(album);
+		  AlbumEditorUI.FireUp(album);
 		}
 		
 		private string GetCol1Data(Photo p) {
@@ -515,7 +527,7 @@ using Glade;
 		  ArrayList selectedphotos = new ArrayList();
       Photo p = GetPhoto(args.Path);
       selectedphotos.Add(p);
-		  PhotoEditorUI photoeditor = new PhotoEditorUI(selectedphotos);
+		  PhotoEditorUI.FireUp(selectedphotos);
 		}
 				
 		private void EditButtonClicked(object o, EventArgs args) {
@@ -527,12 +539,12 @@ using Glade;
           Photo p = GetPhoto(path);
           selectedphotos.Add(p);
         }
-        PhotoEditorUI photoeditor = new PhotoEditorUI(selectedphotos);
+        PhotoEditorUI.FireUp(selectedphotos);
   		} // check left tree now.
   		else if (treeview1.Selection.GetSelectedRows().Length > 0) {
   		  TreePath path = treeview1.Selection.GetSelectedRows()[0];
-  		  Album a = (Album) _albums[path.Indices[0]];
-  		  AlbumEditorUI editor = new AlbumEditorUI(a);
+  		  Album album = (Album) _albums[path.Indices[0]];
+  		  AlbumEditorUI.FireUp(album);
   		}
 		}
 		
@@ -631,28 +643,114 @@ using Glade;
 		  progressbar1.Text = status;
 		}
 		
-		// Connect the Signals defined in Glade
-  	private void OnWindowDeleteEvent (object sender, EventArgs a) {
-  		Application.Quit ();
-  		// a.RetVal = true;
-  	}
-  	
-  	private void ConnectionHandler(object sender, EventArgs e) {
-  	  SetStatusLabel("Connecting to Flickr...");
-  	  FlickrCommunicator.GetInstance();
-  	}
-  	
-  	public void SetStatusLabel(string status) {
-  	  label1.Text = status;
-  	}
+		public void SetIsConnected(bool connected) {
+		  if (connected) {
+		    label13.Text = "Connected";
+		    image5.Stock = Stock.Connect;
+		  } else {
+		    label13.Text = "Disconnected";
+		    image5.Stock = Stock.Disconnect;
+		  }
+		}
   	
   	private void SetMenuBar() {
       // Connect menu item.
       imagemenuitem2.Activated += new EventHandler(ConnectionHandler);
       
       // Quit menu item.
-      imagemenuitem5.Activated += new EventHandler(OnWindowDeleteEvent);
+      imagemenuitem5.Activated += new EventHandler(OnQuitEvent);
+      checkmenuitem3.Activated += new EventHandler(OnWorkOfflineEvent);
     }
+    
+		private void OnQuitEvent (object sender, EventArgs args) {
+
+  	  ResponseType result = ResponseType.Yes;
+  	  // If the connection is busy, notify the user that he's aborting
+  	  // the connection.
+  	  if (FlickrCommunicator.GetInstance().IsBusy) {
+  	    MessageDialog md = new MessageDialog(
+  	        null, DialogFlags.DestroyWithParent, MessageType.Question,
+  	        ButtonsType.YesNo, 
+  	        "Connection is busy. Do you really wish to abort the connection"
+  	        + " and quit the application?");
+  	    result = (ResponseType) md.Run();
+  	    md.Destroy();
+  	  }
+  	  if (result == ResponseType.Yes) {
+  	    if (_connthread != null) _connthread.Abort();
+  		  Application.Quit ();
+  		}
+		}
+		
+		// Connect the Signals defined in Glade
+  	private void OnWindowDeleteEvent (object sender, DeleteEventArgs args) {
+  	  OnQuitEvent(null, null);
+  		args.RetVal = true;
+  	}
+  	
+  	private bool IsWorkOffline {
+  	  get {
+  	    return checkmenuitem3.Active;
+  	  }
+  	}
+  	
+  	private void OnWorkOfflineEvent(object sender, EventArgs args) {
+  	  Console.WriteLine("Work offline status changed: " + IsWorkOffline);
+  	  if (IsWorkOffline) { // Work OFF-line.
+  	    if (FlickrCommunicator.GetInstance().IsBusy) {
+  	      checkmenuitem3.Active = false;
+  	      MessageDialog md = new MessageDialog(
+  	          null, DialogFlags.DestroyWithParent, MessageType.Info,
+  	          ButtonsType.Close, "Connection busy... Please try again later.");
+  	      md.Run();
+  	      md.Destroy();
+  	      return;
+  	    }
+  	    FlickrCommunicator.GetInstance().Disconnect();
+  	    if (_connthread != null) _connthread.Abort();
+  	    _connthread = null;
+  	    SetStatusLabel("Done");
+  	  } else { // Work ON-line.
+  	    if (_connthread != null) return;
+  	    ThreadStart job = new ThreadStart(PeriodicallyTryConnecting);
+  	    _connthread = new Thread(job);
+  	    _connthread.Start();
+  	  }
+  	}
+  	
+  	// This method is only supposed to be executed inside a new thread.
+  	// It utilizes Thread.Sleep method, which may cause the GUI to stall,
+  	// if called directly from the main Gtk Application thread.
+  	private void PeriodicallyTryConnecting() {
+  	  if (IsWorkOffline) return;
+  	  while (!IsWorkOffline) {
+  	    FlickrCommunicator comm = FlickrCommunicator.GetInstance();
+  	    while (comm.IsBusy) {
+  	      Console.WriteLine("Already busy.. waiting for 5 mins");
+  	      Thread.Sleep(5*60*1000); // wait for the connection to be finished.
+  	    }
+  	    SetStatusLabel("Attempting connection...");
+  	    comm.AttemptConnection();
+  	    if (comm.IsConnected) comm.RoutineCheck();
+  	    SetStatusLabel("Done");
+  	    Console.WriteLine("Sleeping for 10 mins");
+  	    Thread.Sleep(10*60*1000); // 10 mins in milliseconds.
+  	  }
+  	}
+  	
+  	private void ConnectionHandler(object sender, EventArgs e) {
+  	  if (IsWorkOffline) {
+  	    checkmenuitem3.Active = false;
+  	  }
+  	  if (FlickrCommunicator.GetInstance().IsConnected) {
+  	    return;
+  	  }
+      OnWorkOfflineEvent(null, null);
+  	}
+  	
+  	public void SetStatusLabel(string status) {
+  	  label1.Text = status;
+  	}
     
     private void SetFlamesWindow() {
       eventbox3.ModifyBg(StateType.Normal, tabcolor);
@@ -681,7 +779,7 @@ using Glade;
 		                        
 		      if (isdirty && !isdeleted) {
 		        PersistentInformation.GetInstance()
-		                        .RemovePhotoFromAlbum(photoid, setid);
+		                        .DeletePhotoEntryFromAlbum(photoid, setid);
 		      } else {
 		        PersistentInformation.GetInstance()
 		                        .MarkPhotoForDeletionFromAlbum(photoid, setid, true);

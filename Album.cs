@@ -7,16 +7,14 @@ using System;
 	  private string title;
 	  private string desc;
 	  private string photoid;
-	  private int numpics;
 	  
 		public Album(string setid, string title, 
-		             string desc, string photoid, int numpics)
+		             string desc, string photoid)
 		{
 		  this.setid = setid;
 		  this.title = title;
 		  this.desc = desc;
 		  this.photoid = photoid;
-		  this.numpics = numpics;
 		}
 		
 		public bool IsEqual(Album a) {
@@ -27,7 +25,6 @@ using System;
 		  if (this.title != a.title)  isequal = false;
 		  if (this.desc != a.desc) isequal = false;
 		  if (this.photoid != a.photoid) isequal = false;
-		  if (this.numpics != a.numpics) isequal = false;
 		  return isequal;
 		}
 		
