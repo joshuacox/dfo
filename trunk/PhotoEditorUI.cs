@@ -81,7 +81,7 @@ using Glade;
     // heed to the changes done to the box.
     private bool ignorechangedevent;
     
-		public PhotoEditorUI(ArrayList selectedphotos)
+		private PhotoEditorUI(ArrayList selectedphotos)
 		{
 		  Glade.XML gxml = new Glade.XML (null, "organizer.glade", "window2", null);
 		  gxml.Autoconnect (this);
@@ -134,6 +134,10 @@ using Glade;
       }
 
 		  window2.ShowAll();
+		}
+		
+		public static void FireUp(ArrayList photos) {
+		  PhotoEditorUI editor = new PhotoEditorUI(photos);
 		}
 		
 	  private int GetIndexOfPrivacyBox(Photo p) {

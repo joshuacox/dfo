@@ -34,7 +34,7 @@ using Glade;
 		
 		private Album _album;
 		
-		public AlbumEditorUI(Album album)
+		private AlbumEditorUI(Album album)
 		{
 		  Glade.XML gxml = new Glade.XML (null, "organizer.glade", "window3", null);
 		  gxml.Autoconnect (this);
@@ -59,6 +59,10 @@ using Glade;
 		  image4.Pixbuf = PersistentInformation.GetInstance()
 		                    .GetSmallImage(album.PrimaryPhotoid);
 		  window3.ShowAll();
+		}
+		
+		public static void FireUp(Album album) {
+		  AlbumEditorUI editor = new AlbumEditorUI(album);
 		}
 		
 		public void OnTitleChanged(object o, EventArgs args) {
