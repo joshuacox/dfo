@@ -16,6 +16,7 @@ using Mono.Data.SqliteClient;
 		private readonly object _albumlock;
 		private readonly object _setphotolock;
 		private readonly object _taglock;
+		private readonly object _writelock;
 		
 		private static string GCONF_APP_PATH = "/apps/DesktopFlickrOrganizer";
 		private static string SECRET_TOKEN = GCONF_APP_PATH + "/token";
@@ -25,7 +26,7 @@ using Mono.Data.SqliteClient;
 		    System.Environment.GetEnvironmentVariable("HOME") + "/.desktopflickr";
 		private static string THUMBNAIL_DIR = HOME + "/thumbnails";
 		private static string SMALL_IMAGE_DIR = HOME + "/small_images";
-    private static string DB_PATH = "URI=file:" + HOME + "/sqlite.db";
+    private static string DB_PATH = "URI=file:" + HOME + "/sqlite.db,version=3,busy_timeout=30000";
     
     private static string CREATE_PHOTO_TABLE = 
         "create table photo (\n"
@@ -106,6 +107,7 @@ using Mono.Data.SqliteClient;
       _photolock = new object();
       _setphotolock = new object();
       _taglock = new object();
+      _writelock = new object();
 		}
 		
 		public static PersistentInformation GetInstance() {
@@ -161,6 +163,7 @@ using Mono.Data.SqliteClient;
 		}
 		
 		private void RunNonQuery(string query) {
+		  lock (_writelock) {
 		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
       dbcon.Open();
 		  IDbCommand dbcmd = dbcon.CreateCommand();
@@ -168,6 +171,7 @@ using Mono.Data.SqliteClient;
 		  dbcmd.ExecuteNonQuery();
 		  dbcmd.Dispose();
 		  dbcon.Close();
+		  }
 		}
 		
 		/*
@@ -316,18 +320,12 @@ using Mono.Data.SqliteClient;
 		}
 		
 		public void SetPhotoDirty(string photoid, bool isdirty) {
-		  lock (_photolock) {
       if (!HasPhoto(photoid)) throw new Exception();
-      IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
-      dbcon.Open();
-      IDbCommand dbcmd = dbcon.CreateCommand();
+		  lock (_photolock) {
       int dirtvalue = 0;
       if (isdirty) dirtvalue = 1;
-      dbcmd.CommandText = String.Format(
-          "update photo set isdirty={0} where id='{1}';", dirtvalue, photoid);
-      dbcmd.ExecuteNonQuery();
-      dbcmd.Dispose();
-      dbcon.Close();
+      RunNonQuery(String.Format(
+          "update photo set isdirty={0} where id='{1}';", dirtvalue, photoid));
       }
 		}
 		
@@ -359,20 +357,14 @@ using Mono.Data.SqliteClient;
 		
 		public void InsertPhoto(Photo p) {
 		  lock (_photolock) {
-		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
-      dbcon.Open();
-		  IDbCommand dbcmd = dbcon.CreateCommand();
 		  string safeTitle = p.Title.Replace("'", "''"); // try with \'
 		  string safeDesc = p.Description.Replace("'", "''");
-		  dbcmd.CommandText = String.Format(
+		  RunNonQuery(String.Format(
 		      "insert into photo (id, title, desc, license, ispublic, "
 		      + "isfriend, isfamily, lastupdate) values('{0}','{1}','{2}',{3}"
 		      + ",{4},{5},{6},'{7}');",
 		       p.Id, safeTitle, safeDesc, p.License, p.IsPublic, p.IsFriend,
-		       p.IsFamily, p.LastUpdate);
-		  dbcmd.ExecuteNonQuery();
-		  dbcmd.Dispose();
-		  dbcon.Close();
+		       p.IsFamily, p.LastUpdate));
 		  }
 		  foreach (string tag in p.Tags) {
 		    InsertTag(p.Id, tag);

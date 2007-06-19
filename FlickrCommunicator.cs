@@ -72,7 +72,10 @@ using FlickrNet;
 		
 		private void UpdateUIAboutConnection() {
 		  Gtk.Application.Invoke (delegate {
-        DeskFlickrUI.GetInstance().SetIsConnected(_isConnected);
+		    int status = 0;
+		    if (_isConnected) status = 1;
+		    if (_isbusy) status = 2;
+        DeskFlickrUI.GetInstance().SetIsConnected(status);
       });
 		}
 		
@@ -104,12 +107,16 @@ using FlickrNet;
 		
 		public void RoutineCheck() {
 		  _isbusy = true;
+      UpdateUIAboutConnection();
 		  UpdateAlbums();
 		  foreach (Album a in PersistentInformation.GetInstance().GetAlbums()) {
 		    UpdatePhotosForAlbum(a);
-		    DeskFlickrUI.GetInstance().PopulateAlbums();
+		    Gtk.Application.Invoke (delegate {
+		      DeskFlickrUI.GetInstance().RefreshLeftTreeView();
+		    });
 		  }
 		  _isbusy = false;
+		  UpdateUIAboutConnection();
 		}
 		
 		private FlickrNet.PhotoInfo SafelyGetInfo(string photoid) {
@@ -318,7 +325,6 @@ using FlickrNet;
 		      continue;
 		    }
 		    Photo photo = RetrievePhoto(p.PhotoId);
-//		    photo.LastUpdate = p.lastupdate_raw;
 		    PersistentInformation.GetInstance().UpdatePhoto(photo);
 		    Gtk.Application.Invoke (delegate {
 		      DeskFlickrUI.GetInstance().IncrementProgressBar(1);

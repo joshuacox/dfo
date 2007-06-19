@@ -3,17 +3,16 @@
   <Files>
     <File filename="Welcome" />
     <File filename="./DeskFlickrUI.cs" />
-    <File filename="./FlickrCommunicator.cs" />
-    <File filename="./Photo.cs" />
     <File filename="./PersistentInformation.cs" />
-    <File filename="./Album.cs" />
+    <File filename="./FlickrCommunicator.cs" />
   </Files>
   <Views>
     <ViewMemento Id="MonoDevelop.Ide.Gui.Pads.ProjectPad">
       <TreeView>
         <Node expanded="True">
           <Node name="DesktopFlickrOrganizer" expanded="True">
-            <Node name="PersistentInformation.cs" expanded="False" selected="True" />
+            <Node name="References" expanded="True" />
+            <Node name="FlickrCommunicator.cs" expanded="False" selected="True" />
           </Node>
         </Node>
       </TreeView>
@@ -29,7 +28,7 @@
   <Properties>
     <Properties>
       <Property key="ActiveConfiguration" value="Debug" />
-      <Property key="ActiveWindow" value="/home/mann/DesktopFlickrOrganizer/PersistentInformation.cs" />
+      <Property key="ActiveWindow" value="/home/mann/DesktopFlickrOrganizer/FlickrCommunicator.cs" />
     </Properties>
   </Properties>
 </UserCombinePreferences>
