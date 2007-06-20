@@ -94,9 +94,6 @@ using FlickrNet;
 		    _isConnected = false;
 		    return;
 		  }
-      ThreadStart job = new ThreadStart(RoutineCheck);
-      Thread t = new Thread(job);
-      t.Start();
 		}
 		
 		public bool IsBusy {
@@ -178,10 +175,6 @@ using FlickrNet;
 		// and it should be retried from step 1.
 		// This method only retrieves the photo from flickr, but doesn't store
 		// it automatically in database.
-		// The reason is that the APIs don't provide the last updated timestamp
-		// information when you retrieve full information (a bug). So, instead
-		// of leaving this field empty, its expected of the calling method to
-		// fill it up, and then save it in database.
 		public Photo RetrievePhoto(string photoid) {
 		  if (!_isConnected) return null;
 		  // Step 1: Retrieve photo information.
@@ -287,7 +280,8 @@ using FlickrNet;
 		  FlickrNet.Photo[] photos = null;
 		  for (int i=0; i<MAXTRIES; i++) {
 		    try {
-		      photos = flickrObj.PhotosetsGetPhotos(album.SetId);
+		      photos = flickrObj.PhotosetsGetPhotos(
+		                    album.SetId, PhotoSearchExtras.LastUpdated);
 		      return photos;
 		    } catch(FlickrNet.FlickrException e) {
 		      // Maximum attempts over.
@@ -335,6 +329,37 @@ using FlickrNet;
 		  PersistentInformation.GetInstance().DeleteCleanPhotoEntriesFromAlbum(album.SetId);
 		  foreach (FlickrNet.Photo p in photos) {
 		    PersistentInformation.GetInstance().AddPhotoToAlbum(p.PhotoId, album.SetId);
+		  }
+		}
+		
+		private void SyncDirtyPhotosToServer() {
+		  ArrayList photos = PersistentInformation.GetInstance().GetDirtyPhotos();
+		  foreach (Photo photo in photos) {
+		    Photo serverphoto = RetrievePhoto(photo.Id);
+		    bool ismodified = !serverphoto.LastUpdate.Equals(photo.LastUpdate);
+		    if (ismodified) {
+          DeskFlickrUI.GetInstance().AddServerPhoto(serverphoto);
+		      continue;
+		    }
+		    // update changes as per required.
+		    bool ismetachanged = false;
+		    if (!photo.Title.Equals(serverphoto.Title)) ismetachanged = true;
+		    if (!photo.Description.Equals(serverphoto.Description)) ismetachanged = true;
+		    if (ismetachanged) 
+		        flickrObj.PhotosSetMeta(photo.Id, photo.Title, photo.Description);
+		    
+		    bool isvischanged = false;
+		    if (photo.IsPublic != serverphoto.IsPublic) isvischanged = true;
+		    if (photo.IsFriend != serverphoto.IsFriend) isvischanged = true;
+		    if (photo.IsFamily != serverphoto.IsFamily) isvischanged = true;
+		    if (isvischanged) {
+		      // TODO: Need to add ways to set the comment and add meta permissions.
+		        flickrObj.PhotosSetPerms(photo.Id, photo.IsPublic, photo.IsFriend,
+		                            photo.IsFamily, PermissionComment.Everybody, 
+		                            PermissionAddMeta.Everybody);
+		    }
+		    // Photo has been synced, now remove the dirty bit.
+		    PersistentInformation.GetInstance().SetPhotoDirty(photo.Id, false);
 		  }
 		}
 	}

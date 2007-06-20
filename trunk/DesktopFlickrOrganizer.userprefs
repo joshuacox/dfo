@@ -5,6 +5,7 @@
     <File filename="./DeskFlickrUI.cs" />
     <File filename="./PersistentInformation.cs" />
     <File filename="./FlickrCommunicator.cs" />
+    <File filename="./PhotoEditorUI.cs" />
   </Files>
   <Views>
     <ViewMemento Id="MonoDevelop.Ide.Gui.Pads.ProjectPad">
@@ -12,7 +13,7 @@
         <Node expanded="True">
           <Node name="DesktopFlickrOrganizer" expanded="True">
             <Node name="References" expanded="True" />
-            <Node name="FlickrCommunicator.cs" expanded="False" selected="True" />
+            <Node name="PhotoEditorUI.cs" expanded="False" selected="True" />
           </Node>
         </Node>
       </TreeView>
@@ -20,7 +21,9 @@
     <ViewMemento Id="MonoDevelop.Ide.Gui.Pads.ClassPad">
       <TreeView>
         <Node expanded="True">
-          <Node name="DesktopFlickrOrganizer" expanded="True" />
+          <Node name="DesktopFlickrOrganizer" expanded="True">
+            <Node name="DeskFlickrUI" expanded="True" />
+          </Node>
         </Node>
       </TreeView>
     </ViewMemento>
@@ -28,7 +31,7 @@
   <Properties>
     <Properties>
       <Property key="ActiveConfiguration" value="Debug" />
-      <Property key="ActiveWindow" value="/home/mann/DesktopFlickrOrganizer/FlickrCommunicator.cs" />
+      <Property key="ActiveWindow" value="/home/mann/DesktopFlickrOrganizer/PhotoEditorUI.cs" />
     </Properties>
   </Properties>
 </UserCombinePreferences>
