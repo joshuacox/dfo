@@ -154,8 +154,8 @@ using Glade;
 		  window2.ShowAll();
 		}
 		
-		public static void FireUp(ArrayList photos, bool conflictmode) {
-		  PhotoEditorUI editor = new PhotoEditorUI(photos, conflictmode);
+		public static void FireUp(ArrayList selectedphotos, bool conflictmode) {
+		  PhotoEditorUI editor = new PhotoEditorUI(selectedphotos, conflictmode);
 		}
 		
 	  private int GetIndexOfPrivacyBox(Photo p) {
@@ -226,8 +226,9 @@ using Glade;
 		private void SetTagTreeView() {
 		  ListStore tagstore = new ListStore(typeof(string));
 		  _tags = PersistentInformation.GetInstance().GetAllTags();
-		  foreach(Tag t in PersistentInformation.GetInstance().GetAllTags()) {
-		    tagstore.AppendValues(t.Name + "(" + t.NumberOfPics + ")");
+		  foreach(string tag in PersistentInformation.GetInstance().GetAllTags()) {
+		    int numpics = PersistentInformation.GetInstance().GetCountPhotosForTag(tag);
+		    tagstore.AppendValues(tag + "(" + numpics + ")");
 		  }
 		  iconview1.Model = tagstore;
 		  iconview1.TextColumn = 0;
@@ -241,14 +242,15 @@ using Glade;
 		
 		private void EmbedCommonInformation() {
       // Work upon the selected photos here.
-      Photo firstphoto = (Photo) _selectedphotos[0];
+      Photo firstphoto = ((DeskFlickrUI.SelectedPhoto) _selectedphotos[0]).photo;
 		  string commonTitle = firstphoto.Title;
 		  string commonDesc = firstphoto.Description;
 		  int commonPrivacy = GetIndexOfPrivacyBox(firstphoto);
 		  int commonLicense = GetIndexOfLicenseBox(firstphoto);
 		  ArrayList tagschosen = firstphoto.Tags;
 		  
-		  foreach (Photo p in _selectedphotos) {
+		  foreach (DeskFlickrUI.SelectedPhoto sel in _selectedphotos) {
+		    Photo p = sel.photo;
 		    if (!commonTitle.Equals(p.Title)) commonTitle = "";
 		    if (!commonDesc.Equals(p.Description)) commonDesc = "";
 		    if (commonPrivacy != GetIndexOfPrivacyBox(p)) commonPrivacy = 0;
@@ -275,7 +277,6 @@ using Glade;
 		}
 		
 		private void ApplyConflictTagToLine(int startline, int endline) {
-		  Console.WriteLine("Applying tag");
 		  TextBuffer buf = textview4.Buffer;
 		  TextIter start = buf.GetIterAtLine(startline);
 		  TextIter end = buf.GetIterAtLine(endline);
@@ -334,24 +335,28 @@ using Glade;
 		}
 		
 		private void ShowInformationForCurrentPhoto() {
-		  Photo p = (Photo) _selectedphotos[_curphotoindex];
+		  DeskFlickrUI.SelectedPhoto sel = 
+		      (DeskFlickrUI.SelectedPhoto) _selectedphotos[_curphotoindex];
+		  Photo p = sel.photo;
 		  ShowInformationForPhoto(p);
 		}
 
 		private void OnTagClicked(object o, ItemActivatedArgs args) {
-		  Tag t = (Tag) _tags[args.Path.Indices[0]];
+		  string tag = (string) _tags[args.Path.Indices[0]];
 		  ArrayList tagschosen;
 		  
 		  if (checkbutton1.Active || !checkbutton1.Sensitive) {
-		    Photo p = (Photo) _selectedphotos[_curphotoindex];
-		    p.AddTag(t.Name);
+		    Photo p = ((DeskFlickrUI.SelectedPhoto) _selectedphotos[_curphotoindex]).photo;
+		    p.AddTag(tag);
 		    tagschosen = p.Tags;
 		  } else {
-		    foreach (Photo p in _selectedphotos) {
-		      p.AddTag(t.Name);
+		    foreach (DeskFlickrUI.SelectedPhoto sel in _selectedphotos) {
+		      Photo p = sel.photo;
+		      p.AddTag(tag);
 		    }
-		    tagschosen = ((Photo) _selectedphotos[0]).Tags;
-		    foreach (Photo p in _selectedphotos) {
+		    tagschosen = ((DeskFlickrUI.SelectedPhoto) _selectedphotos[0]).photo.Tags;
+		    foreach (DeskFlickrUI.SelectedPhoto sel in _selectedphotos) {
+		      Photo p = sel.photo;
 		      tagschosen = Utils.GetIntersection(tagschosen, p.Tags);
 		    }
 		  }
@@ -367,10 +372,11 @@ using Glade;
 		    return;
 		  }
 		  if (checkbutton1.Active || !checkbutton1.Sensitive) {
-		    Photo p = (Photo) _selectedphotos[_curphotoindex];
+		    Photo p = ((DeskFlickrUI.SelectedPhoto) _selectedphotos[_curphotoindex]).photo;
 		    p.Tags = parsedtags;
 		  } else {
-		    foreach (Photo p in _selectedphotos) {
+		    foreach (DeskFlickrUI.SelectedPhoto sel in _selectedphotos) {
+		      Photo p = sel.photo;
 		      p.Tags = parsedtags;
 		    }
 		  }
@@ -383,11 +389,12 @@ using Glade;
 		  
 		  if (checkbutton1.Active || !checkbutton1.Sensitive) {
 		    // Per photo
-		    Photo p = (Photo) _selectedphotos[_curphotoindex];
+		    Photo p = ((DeskFlickrUI.SelectedPhoto) _selectedphotos[_curphotoindex]).photo;
 		    p.Title = entry1.Text;
 		  } else {
 		    // Group of photos
-		    foreach (Photo p in _selectedphotos) {
+		    foreach (DeskFlickrUI.SelectedPhoto sel in _selectedphotos) {
+		      Photo p = sel.photo;
 		      p.Title = entry1.Text;
 		    }
 		  }
@@ -399,11 +406,12 @@ using Glade;
 
 		  if (checkbutton1.Active || !checkbutton1.Sensitive) {
 		    // Per photo
-		    Photo p = (Photo) _selectedphotos[_curphotoindex];
+		    Photo p = ((DeskFlickrUI.SelectedPhoto) _selectedphotos[_curphotoindex]).photo;
 		    p.Description = entry2.Text;
 		  } else {
 		    // Group of photos
-		    foreach (Photo p in _selectedphotos) {
+		    foreach (DeskFlickrUI.SelectedPhoto sel in _selectedphotos) {
+		      Photo p = sel.photo;
 		      p.Description = entry2.Text;
 		    }
 		  }
@@ -413,11 +421,11 @@ using Glade;
       if (_ignorechangedevent) return;
 		  
 		  if (checkbutton1.Active || !checkbutton1.Sensitive) {
-		    Photo p = (Photo) _selectedphotos[_curphotoindex];
+		    Photo p = ((DeskFlickrUI.SelectedPhoto) _selectedphotos[_curphotoindex]).photo;
 		    SetPhotoPrivacyFromBox(ref p, combobox1.Active);
 		  } else {
 		    for (int i=0; i < _selectedphotos.Count; i++) {
-		      Photo p = (Photo) _selectedphotos[i];
+		      Photo p = ((DeskFlickrUI.SelectedPhoto) _selectedphotos[i]).photo;
 		      SetPhotoPrivacyFromBox(ref p, combobox1.Active);
 		    }
 		  }
@@ -427,11 +435,11 @@ using Glade;
 		  if (_ignorechangedevent) return;
 		  
 		  if (checkbutton1.Active || !checkbutton1.Sensitive) {
-		    Photo p = (Photo) _selectedphotos[_curphotoindex];
+		    Photo p = ((DeskFlickrUI.SelectedPhoto) _selectedphotos[_curphotoindex]).photo;
 		    SetPhotoLicenseFromBox(ref p, combobox2.Active);
 		  } else {
 		    for (int i=0; i < _selectedphotos.Count; i++) {
-		      Photo p = (Photo) _selectedphotos[i];
+		      Photo p = ((DeskFlickrUI.SelectedPhoto) _selectedphotos[i]).photo;
 		      SetPhotoLicenseFromBox(ref p, combobox2.Active);
 		    }
 		  }
@@ -475,7 +483,8 @@ using Glade;
 		}
 		
 		private void OnSaveButtonClick(object o, EventArgs args) {
-		  foreach (Photo p in _selectedphotos) {
+		  foreach (DeskFlickrUI.SelectedPhoto sel in _selectedphotos) {
+		    Photo p = sel.photo;
 		    if (_isconflictmode) {
 		      Photo serverphoto = DeskFlickrUI.GetInstance().GetServerPhoto(p.Id);
 		      p.LastUpdate = serverphoto.LastUpdate;
@@ -484,7 +493,7 @@ using Glade;
         PersistentInformation.GetInstance().SavePhoto(p);
 		  }
 		  window2.Destroy();
-		  DeskFlickrUI.GetInstance().UpdatePhotos();
+		  DeskFlickrUI.GetInstance().UpdatePhotos(_selectedphotos);
 		  DeskFlickrUI.GetInstance().UpdateToolBarButtons();
 		}
 	}

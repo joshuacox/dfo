@@ -112,6 +112,14 @@ using FlickrNet;
 		      DeskFlickrUI.GetInstance().RefreshLeftTreeView();
 		    });
 		  }
+		  // Sync photos at the end. It takes time for the changes done to server
+		  // to propagate. If we keep these sync methods before updates, then
+		  // the changes would be synced to server, however, the server would
+		  // respond back with the old ones to update methods. So, the application
+		  // would end up removing the changes, and only show them again at 
+		  // the next update.
+		  SyncDirtyPhotosToServer();
+		  SyncDirtyAlbumsToServer();
 		  _isbusy = false;
 		  UpdateUIAboutConnection();
 		}
@@ -241,9 +249,16 @@ using FlickrNet;
 		  });
 		  
       ArrayList setids = new ArrayList();
-      // Iterate through the sets, and retrieve their photos.
+      // Iterate through the sets, and retrieve their primary photos.
 		  foreach (Photoset s in sets) {
+		    Gtk.Application.Invoke (delegate {
+		      DeskFlickrUI.GetInstance().IncrementProgressBar(1);
+		    });
 		    setids.Add(s.PhotosetId);
+		    // Skip the checkings, if the album is dirty.
+		    if (PersistentInformation.GetInstance().IsAlbumDirty(s.PhotosetId)) 
+		        continue;
+		    
 		    Album album = new Album(s.PhotosetId, s.Title, 
 		                            s.Description, s.PrimaryPhotoId);
 
@@ -258,11 +273,17 @@ using FlickrNet;
         // Make sure not to overwrite any of user specified changes,
         // when doing updates, namely the isdirty=1 rows.
         PersistentInformation.GetInstance().AddPhotoToAlbum(p.Id, album.SetId);
-        
-		    Gtk.Application.Invoke (delegate {
-		      DeskFlickrUI.GetInstance().IncrementProgressBar(1);
-		    });
 		  }
+		  
+		  // Now remove the albums which are no longer present on the server.
+		  ArrayList cleanalbums = 
+		      PersistentInformation.GetInstance().GetDirtyAlbums(false);
+      foreach (Album album in cleanalbums) {
+        if (!setids.Contains(album.SetId)) {
+          PersistentInformation.GetInstance().DeleteAlbum(album.SetId);
+          PersistentInformation.GetInstance().DeleteAllPhotosFromAlbum(album.SetId);
+        }
+      }
 
 		  PersistentInformation.GetInstance().OrderedSetsList =
 		      Utils.GetDelimitedString(setids, ",");
@@ -297,6 +318,13 @@ using FlickrNet;
 		}
 		
 		private void UpdatePhotosForAlbum(Album album) {
+		  // Don't update photos if the album is dirty, we need to flush our
+		  // changes first.
+		  if (PersistentInformation.GetInstance().IsAlbumDirty(album.SetId)) {
+		    Console.WriteLine("Album is dirty: " + album.Title);
+		    return;
+		  }
+		  
 		  Gtk.Application.Invoke (delegate {
 		    DeskFlickrUI.GetInstance().SetStatusLabel(
 		        String.Format("Retrieving photos for set: {0}", album.Title));
@@ -308,6 +336,7 @@ using FlickrNet;
 		    UpdateUIAboutConnection();
 		    return;
 		  }
+		  Console.WriteLine("Got photos for album: " + album.Title + " num: " + photos.Length);
 		  Gtk.Application.Invoke (delegate {
 		    DeskFlickrUI.GetInstance().SetLimitsProgressBar(photos.Length);
 		  });
@@ -315,7 +344,7 @@ using FlickrNet;
 		  // Step 2: Ensure we have the latest photos.
 		  foreach (FlickrNet.Photo p in photos) {
 		    if (PersistentInformation.GetInstance().
-		        HasLatestPhoto(p.PhotoId, p.lastupdate_raw)) {
+		          HasLatestPhoto(p.PhotoId, p.lastupdate_raw)) {
 		      continue;
 		    }
 		    Photo photo = RetrievePhoto(p.PhotoId);
@@ -326,7 +355,7 @@ using FlickrNet;
 		  }
 		  
 		  // Step 3: Link the photos to the set, in the database.
-		  PersistentInformation.GetInstance().DeleteCleanPhotoEntriesFromAlbum(album.SetId);
+		  PersistentInformation.GetInstance().DeleteAllPhotosFromAlbum(album.SetId);
 		  foreach (FlickrNet.Photo p in photos) {
 		    PersistentInformation.GetInstance().AddPhotoToAlbum(p.PhotoId, album.SetId);
 		  }
@@ -334,32 +363,71 @@ using FlickrNet;
 		
 		private void SyncDirtyPhotosToServer() {
 		  ArrayList photos = PersistentInformation.GetInstance().GetDirtyPhotos();
+		  Gtk.Application.Invoke (delegate {
+		    DeskFlickrUI.GetInstance().SetStatusLabel("Syncing photos to server...");
+        DeskFlickrUI.GetInstance().SetProgressBarText("");
+        DeskFlickrUI.GetInstance().SetLimitsProgressBar(photos.Count);
+      });
 		  foreach (Photo photo in photos) {
+		    Console.WriteLine("syncing photo: " + photo.Title);
+		    Gtk.Application.Invoke (delegate {
+		      DeskFlickrUI.GetInstance().IncrementProgressBar(1);
+		    });
 		    Photo serverphoto = RetrievePhoto(photo.Id);
 		    bool ismodified = !serverphoto.LastUpdate.Equals(photo.LastUpdate);
 		    if (ismodified) {
+		      Console.WriteLine("Is modified");
           DeskFlickrUI.GetInstance().AddServerPhoto(serverphoto);
 		      continue;
 		    }
-		    // update changes as per required.
+		    // Sync meta information.
 		    bool ismetachanged = false;
 		    if (!photo.Title.Equals(serverphoto.Title)) ismetachanged = true;
 		    if (!photo.Description.Equals(serverphoto.Description)) ismetachanged = true;
-		    if (ismetachanged) 
-		        flickrObj.PhotosSetMeta(photo.Id, photo.Title, photo.Description);
-		    
+		    if (ismetachanged) {
+		      flickrObj.PhotosSetMeta(photo.Id, photo.Title, photo.Description);
+		    }
+		    // Sync Permissions.
 		    bool isvischanged = false;
 		    if (photo.IsPublic != serverphoto.IsPublic) isvischanged = true;
 		    if (photo.IsFriend != serverphoto.IsFriend) isvischanged = true;
 		    if (photo.IsFamily != serverphoto.IsFamily) isvischanged = true;
 		    if (isvischanged) {
 		      // TODO: Need to add ways to set the comment and add meta permissions.
-		        flickrObj.PhotosSetPerms(photo.Id, photo.IsPublic, photo.IsFriend,
+		      flickrObj.PhotosSetPerms(photo.Id, photo.IsPublic, photo.IsFriend,
 		                            photo.IsFamily, PermissionComment.Everybody, 
 		                            PermissionAddMeta.Everybody);
+		    }
+		    // Sync tags as well.
+		    bool istagschanged = !photo.IsSameTags(serverphoto.Tags);
+		    if (istagschanged) {
+		      flickrObj.PhotosSetTags(photo.Id, photo.TagString);
 		    }
 		    // Photo has been synced, now remove the dirty bit.
 		    PersistentInformation.GetInstance().SetPhotoDirty(photo.Id, false);
 		  }
+		}
+		
+		private void SyncDirtyAlbumsToServer() {
+		  ArrayList albums = PersistentInformation.GetInstance().GetDirtyAlbums(true);
+		  if (albums.Count == 0) return;
+		  Gtk.Application.Invoke (delegate {
+		    DeskFlickrUI.GetInstance().SetStatusLabel("Syncing sets to server...");
+        DeskFlickrUI.GetInstance().SetProgressBarText("");
+        DeskFlickrUI.GetInstance().SetLimitsProgressBar(albums.Count);
+      });
+      foreach (Album album  in albums) {
+        Console.WriteLine("Syncing album: " + album.Title);
+      	Gtk.Application.Invoke (delegate {
+		      DeskFlickrUI.GetInstance().IncrementProgressBar(1);
+		    });
+        flickrObj.PhotosetsEditMeta(album.SetId, album.Title, album.Desc);
+        // Sync the primary photo id of the set.
+        ArrayList photoids = 
+            PersistentInformation.GetInstance().GetPhotoIdsForAlbum(album.SetId);
+        flickrObj.PhotosetsEditPhotos(album.SetId, album.PrimaryPhotoid,
+                                      Utils.GetDelimitedString(photoids, ","));
+        PersistentInformation.GetInstance().SetAlbumDirty(album.SetId, false);
+      }
 		}
 	}
