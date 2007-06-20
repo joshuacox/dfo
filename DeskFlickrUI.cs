@@ -62,6 +62,7 @@ using Glade;
     Entry entry5;
     
     ToggleToolButton streambutton;
+    ToggleToolButton conflictbutton;
     
     public static string ICON_PATH = "icons/Font-Book.ico";
     public static string THUMBNAIL_PATH = "icons/FontBookThumbnail.png";
@@ -79,7 +80,9 @@ using Glade;
     private ArrayList _albums;
     private ArrayList _photos;
     private ArrayList _tags;
-
+    // Keep track of photos who are modified both here, and in the server.
+    private ArrayList _conflictedphotos;
+    
     private int leftcurselectedindex;
     private int selectedtab;
     private TargetEntry[] targets;
@@ -92,6 +95,7 @@ using Glade;
 		  _albums = new ArrayList();
 		  _photos = new ArrayList();
 		  _tags = new ArrayList();
+		  _conflictedphotos = new ArrayList();
 		  
 		  leftcurselectedindex = 0;
 		  selectedtab = 0;
@@ -327,18 +331,18 @@ using Glade;
         textview2.Buffer = buf;
         textview2.ShowAll();
         // Set photos here
-        if (!streambutton.Active) {
+        if (!streambutton.Active && !conflictbutton.Active) {
           photos = PersistentInformation.GetInstance().GetPhotosForAlbum(album.SetId);
         }
-      } 
+      }
       else if (selectedtab == 1) {
         string tag = (string) _tags[leftcurselectedindex];
         textview2.Buffer.Text = "";
-        if (!streambutton.Active) {
+        if (!streambutton.Active && !conflictbutton.Active) {
           photos = PersistentInformation.GetInstance().GetPhotosForTag(tag);
         }
       }
-      if (!streambutton.Active) {
+      if (!streambutton.Active && !conflictbutton.Active) {
         PopulatePhotosTreeView(photos);
       }
 		}
@@ -456,6 +460,13 @@ using Glade;
       if (streambutton.Active) {
         photos = PersistentInformation.GetInstance().GetAllPhotos();
       }
+      else if (conflictbutton.Active) {
+        photos = new ArrayList();
+        foreach (string photoid in _conflictedphotos) {
+          Photo p = PersistentInformation.GetInstance().GetPhoto(photoid);
+          photos.Add(p);
+        }
+      }
       else if (selectedtab == 0) {
         string setid = ((Album) _albums[leftcurselectedindex]).SetId;
         photos = 
@@ -532,10 +543,10 @@ using Glade;
 		  ArrayList selectedphotos = new ArrayList();
       Photo p = GetPhoto(args.Path);
       selectedphotos.Add(p);
-		  PhotoEditorUI.FireUp(selectedphotos);
+		  PhotoEditorUI.FireUp(selectedphotos, conflictbutton.Active);
 		}
 				
-		private void EditButtonClicked(object o, EventArgs args) {
+		private void OnEditButtonClicked(object o, EventArgs args) {
 		  
 		  // Check right tree first.
 		  if (treeview2.Selection.GetSelectedRows().Length > 0) {
@@ -544,7 +555,7 @@ using Glade;
           Photo p = GetPhoto(path);
           selectedphotos.Add(p);
         }
-        PhotoEditorUI.FireUp(selectedphotos);
+        PhotoEditorUI.FireUp(selectedphotos, conflictbutton.Active);
   		} // check left tree now.
   		else if (treeview1.Selection.GetSelectedRows().Length > 0) {
   		  TreePath path = treeview1.Selection.GetSelectedRows()[0];
@@ -553,12 +564,28 @@ using Glade;
   		}
 		}
 		
-		private void StreamButtonClicked(object o, EventArgs args) {
+		private void OnStreamButtonClicked(object o, EventArgs args) {
 		  if (streambutton.Active) {
+		    conflictbutton.Active = false;
 		    PopulatePhotosTreeView(PersistentInformation.GetInstance().GetAllPhotos());
 		  } else {
-		    if (selectedtab == 0) PopulateAlbums();
-		    else if (selectedtab == 1) PopulateTags();
+		    RefreshLeftTreeView();
+		  }
+		}
+		
+		private void OnConflictButtonClicked(object o, EventArgs args) {
+		  if (conflictbutton.Active) {
+		    streambutton.Active = false;
+	      ArrayList photos = new ArrayList();
+	      // Get the photoid from these source (server) photos, and 
+	      // populate the tree with the ones that we have.
+	      foreach (Photo src in _conflictedphotos) {
+	        Photo p = PersistentInformation.GetInstance().GetPhoto(src.Id);
+	        photos.Add(p);
+	      }
+	      PopulatePhotosTreeView(photos);
+		  } else {
+		    RefreshLeftTreeView();
 		  }
 		}
 		
@@ -566,17 +593,31 @@ using Glade;
 		  ToolButton editbutton = new ToolButton(Stock.Edit);
 		  editbutton.IsImportant = true;
 		  editbutton.Sensitive = true;
-		  editbutton.Clicked += new EventHandler(EditButtonClicked);
+		  editbutton.Clicked += new EventHandler(OnEditButtonClicked);
 		  toolbar1.Insert(editbutton, -1);
 		  
 		  streambutton = new ToggleToolButton(Stock.SelectAll);
 		  streambutton.IsImportant = true;
 		  streambutton.Sensitive = true;
 		  streambutton.Label = "Show Stream";
-		  streambutton.Clicked += new EventHandler(StreamButtonClicked);
+		  streambutton.Clicked += new EventHandler(OnStreamButtonClicked);
 		  toolbar1.Insert(streambutton, -1);
+		  
+		  conflictbutton = new ToggleToolButton(Stock.DialogWarning);
+		  conflictbutton.IsImportant = true;
+		  conflictbutton.Sensitive = true;
+		  conflictbutton.Label = "Conflicts";
+		  conflictbutton.Clicked += new EventHandler(OnConflictButtonClicked);
+		  toolbar1.Insert(conflictbutton, -1);
+		  UpdateToolBarButtons();
 		}
-		
+		  	
+  	public void UpdateToolBarButtons() {
+  	  int countphotos = PersistentInformation.GetInstance().GetCountPhotos();
+  	  streambutton.Label = "Show Stream (" + countphotos + ")";
+  	  conflictbutton.Label = "Conflicts (" + _conflictedphotos.Count + ")";
+  	}
+  	
 		private void SetVerticalBar() {
       Label albumLabel = new Label();
       albumLabel.Markup = "<span foreground='white'>Sets</span>";
@@ -743,6 +784,7 @@ using Glade;
   	    comm.AttemptConnection();
   	    if (comm.IsConnected) comm.RoutineCheck();
   	    Gtk.Application.Invoke (delegate {
+  	      UpdateToolBarButtons();
   	      SetStatusLabel("Done. Counting time for reconnection...");
   	      SetLimitsProgressBar(10);
   	    });
@@ -813,4 +855,31 @@ using Glade;
       } // if else ends here.
     }
     
+    public void ClearServerPhotos() {
+      _conflictedphotos.Clear();
+    }
+    
+    public void AddServerPhoto(Photo serverphoto) {
+      foreach (Photo p in _conflictedphotos) {
+        if (p.Id.Equals(serverphoto.Id)) return;
+      }
+      _conflictedphotos.Add(serverphoto);
+    }
+    
+    public Photo GetServerPhoto(string photoid) {
+      foreach (Photo p in _conflictedphotos) {
+        if (p.Id.Equals(photoid)) return p;
+      }
+      return null;
+    }
+    
+    public void RemoveServerPhoto(string photoid) {
+      for (int i=0; i < _conflictedphotos.Count; i++) {
+        Photo serverphoto = (Photo) _conflictedphotos[i];
+        if (serverphoto.Id.Equals(photoid)) {
+          _conflictedphotos.RemoveAt(i);
+          return;
+        }
+      }
+    }
 	}

@@ -250,6 +250,24 @@ using Mono.Data.SqliteClient;
 		  return photo;
 		}
 		
+		public int GetCountPhotos() {
+		  lock(_photolock) {
+		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
+		  dbcon.Open();
+		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  dbcmd.CommandText = "select count(id) from photo;";
+		  IDataReader reader = dbcmd.ExecuteReader();
+		  int count = 0;
+		  if (reader.Read()) {
+		    count = reader.GetInt32(0);
+		  }
+		  reader.Close();
+		  dbcmd.Dispose();
+		  dbcon.Close();
+		  return count;
+		  }
+		}
+		
 		public ArrayList GetAllPhotos() {
 		  lock(_photolock) {
 		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
@@ -391,9 +409,12 @@ using Mono.Data.SqliteClient;
 		    InsertPhoto(src);
 		    return;
 		  }
-		  if (!IsPhotoDirty(src.Id)) {
-		    Photo dst = GetPhoto(src.Id);
-		    if (!dst.LastUpdate.Equals(src.LastUpdate)) {
+		  // We have the photo, call it dst.
+		  Photo dst = GetPhoto(src.Id);
+		  if (!dst.LastUpdate.Equals(src.LastUpdate)) {
+		    if (IsPhotoDirty(src.Id)) {
+		      DeskFlickrUI.GetInstance().AddServerPhoto(src);
+		    } else {
 		      DeletePhoto(src.Id);
 		      InsertPhoto(src);
 		    }

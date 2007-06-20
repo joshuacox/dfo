@@ -52,6 +52,9 @@ using Glade;
     TextView textview3;
     
     [Glade.Widget]
+    TextView textview4;
+    
+    [Glade.Widget]
     Button button3;
     
     [Glade.Widget]
@@ -70,33 +73,41 @@ using Glade;
     [Glade.Widget]
     Image image3;
     
-    private ArrayList tags;
-    private ArrayList selectedphotos;
-    private int curphotoindex;
+    private ArrayList _tags;
+    private ArrayList _selectedphotos;
+    private int _curphotoindex;
     
     // I haven't been able to figure out a way so that only the user
     // selection of combobox elements, would trigger the OnPrivacyChanged
     // and OnLicenseChanged methods. So, I'll go with a hack, by passing
     // in a boolean variable, which can tell these methods, when to not
     // heed to the changes done to the box.
-    private bool ignorechangedevent;
+    private bool _ignorechangedevent;
+    private bool _isconflictmode;
     
-		private PhotoEditorUI(ArrayList selectedphotos)
+		private PhotoEditorUI(ArrayList selectedphotos, bool conflictmode)
 		{
 		  Glade.XML gxml = new Glade.XML (null, "organizer.glade", "window2", null);
 		  gxml.Autoconnect (this);
-		  
+      _isconflictmode = conflictmode;
+      
 		  window2.Title = "Edit information for " + selectedphotos.Count + " photos";
 		  window2.SetIconFromFile(DeskFlickrUI.ICON_PATH);
 		  notebook1.SetTabLabelText(notebook1.CurrentPageWidget, "Information");
 		  notebook1.NextPage();
 		  notebook1.SetTabLabelText(notebook1.CurrentPageWidget, "Tags");
-		  notebook1.PrevPage();
+		  
+      if (_isconflictmode) {
+		    notebook1.NextPage();
+		    notebook1.SetTabLabelText(notebook1.CurrentPageWidget, "Information at Server");
+		  } else {
+		    notebook1.RemovePage(2);
+		  }
+		  notebook1.Page = 0;
 		  
 		  table1.SetColSpacing(0, 50);
-		  
-		  label6.Text = "Edit";
 		  // Set Labels
+		  label6.Text = "Edit";
 		  label5.Text = "Title:";
 		  label4.Text = "Description:";
 		  label3.Text = "Visibility:";
@@ -124,20 +135,27 @@ using Glade;
       combobox2.Changed += new EventHandler(OnLicenseChanged);
       
       textview3.Buffer.Changed += new EventHandler(OnTagsChanged);
+
+      TextTag texttag = new TextTag("conflict");
+      texttag.Font = "Times Italic 10";
+      texttag.WrapMode = WrapMode.Word;
+      texttag.ForegroundGdk = new Gdk.Color(0x99, 0, 0);
+      textview4.Buffer.TagTable.Add(texttag);
       
-      this.selectedphotos = selectedphotos;
+      // Showing photos should be the last step.
+      this._selectedphotos = selectedphotos;
       if (selectedphotos.Count == 1) {
         checkbutton1.Sensitive = false;
         ShowInformationForCurrentPhoto();
       } else {
         EmbedCommonInformation();
       }
-
+      
 		  window2.ShowAll();
 		}
 		
-		public static void FireUp(ArrayList photos) {
-		  PhotoEditorUI editor = new PhotoEditorUI(photos);
+		public static void FireUp(ArrayList photos, bool conflictmode) {
+		  PhotoEditorUI editor = new PhotoEditorUI(photos, conflictmode);
 		}
 		
 	  private int GetIndexOfPrivacyBox(Photo p) {
@@ -207,7 +225,7 @@ using Glade;
 		
 		private void SetTagTreeView() {
 		  ListStore tagstore = new ListStore(typeof(string));
-		  tags = PersistentInformation.GetInstance().GetAllTags();
+		  _tags = PersistentInformation.GetInstance().GetAllTags();
 		  foreach(Tag t in PersistentInformation.GetInstance().GetAllTags()) {
 		    tagstore.AppendValues(t.Name + "(" + t.NumberOfPics + ")");
 		  }
@@ -223,14 +241,14 @@ using Glade;
 		
 		private void EmbedCommonInformation() {
       // Work upon the selected photos here.
-      Photo firstphoto = (Photo) selectedphotos[0];
+      Photo firstphoto = (Photo) _selectedphotos[0];
 		  string commonTitle = firstphoto.Title;
 		  string commonDesc = firstphoto.Description;
 		  int commonPrivacy = GetIndexOfPrivacyBox(firstphoto);
 		  int commonLicense = GetIndexOfLicenseBox(firstphoto);
 		  ArrayList tagschosen = firstphoto.Tags;
 		  
-		  foreach (Photo p in selectedphotos) {
+		  foreach (Photo p in _selectedphotos) {
 		    if (!commonTitle.Equals(p.Title)) commonTitle = "";
 		    if (!commonDesc.Equals(p.Description)) commonDesc = "";
 		    if (commonPrivacy != GetIndexOfPrivacyBox(p)) commonPrivacy = 0;
@@ -240,13 +258,13 @@ using Glade;
 		  entry1.Text = commonTitle;
 		  entry2.Text = commonDesc;
 		  
-		  ignorechangedevent = true;
+		  _ignorechangedevent = true;
 		  {
 		  combobox1.Active = commonPrivacy;
 		  combobox2.Active = commonLicense;
 		  textview3.Buffer.Text = Utils.GetDelimitedString(tagschosen, " ");
 		  }
-		  ignorechangedevent = false;
+		  _ignorechangedevent = false;
 		  
 		  image3.Sensitive = false;
 		  image3.Pixbuf = null;
@@ -256,18 +274,55 @@ using Glade;
 		  label7.Sensitive = false;
 		}
 		
+		private void ApplyConflictTagToLine(int startline, int endline) {
+		  Console.WriteLine("Applying tag");
+		  TextBuffer buf = textview4.Buffer;
+		  TextIter start = buf.GetIterAtLine(startline);
+		  TextIter end = buf.GetIterAtLine(endline);
+		  buf.ApplyTag("conflict", start, end);
+		  textview4.Buffer = buf;
+		}
+		
+		private void HighlightDifferences(Photo serverphoto, Photo photo) {
+		  if (!serverphoto.Title.Equals(photo.Title))
+		      ApplyConflictTagToLine(0, 1);
+		  if (!serverphoto.Description.Equals(photo.Description))
+		      ApplyConflictTagToLine(1, 2);
+		  if (!serverphoto.PrivacyInfo.Equals(photo.PrivacyInfo))
+		      ApplyConflictTagToLine(2, 3);
+		  if (!serverphoto.LicenseInfo.Equals(photo.LicenseInfo))
+		      ApplyConflictTagToLine(3, 4);
+		  if (!serverphoto.TagString.Equals(photo.TagString))
+		      ApplyConflictTagToLine(4, 5);
+		}
+		
 		private void ShowInformationForPhoto(Photo p) {
 		  entry1.Text = p.Title;
 		  entry2.Text = p.Description;
 		  
-		  ignorechangedevent = true;
+		  _ignorechangedevent = true;
 		  {
 		  combobox1.Active = GetIndexOfPrivacyBox(p);
 		  combobox2.Active = GetIndexOfLicenseBox(p);
 		  textview3.Buffer.Text = Utils.GetDelimitedString(p.Tags, " ");
 		  }
-		  ignorechangedevent = false;
+		  _ignorechangedevent = false;
 		  
+      if (_isconflictmode) {
+        Photo serverphoto = DeskFlickrUI.GetInstance().GetServerPhoto(p.Id);
+        string text = String.Format(
+              "Title:\t\t{0}\n"
+            + "Description:\t{1}\n"
+            + "Visibility:\t\t{2}\n"
+            + "License:\t\t{3}\n"
+            + "Tags:\t\t{4}\n",
+            serverphoto.Title, serverphoto.Description, 
+            serverphoto.PrivacyInfo, serverphoto.LicenseInfo,
+            serverphoto.TagString);
+        textview4.Buffer.Text = text;
+        HighlightDifferences(serverphoto, p);
+      }
+      
 		  image3.Sensitive = true;
 		  image3.Pixbuf = p.SmallImage;
 		  label7.Sensitive = true;
@@ -279,43 +334,43 @@ using Glade;
 		}
 		
 		private void ShowInformationForCurrentPhoto() {
-		  Photo p = (Photo) selectedphotos[curphotoindex];
+		  Photo p = (Photo) _selectedphotos[_curphotoindex];
 		  ShowInformationForPhoto(p);
 		}
 
 		private void OnTagClicked(object o, ItemActivatedArgs args) {
-		  Tag t = (Tag) tags[args.Path.Indices[0]];
+		  Tag t = (Tag) _tags[args.Path.Indices[0]];
 		  ArrayList tagschosen;
 		  
 		  if (checkbutton1.Active || !checkbutton1.Sensitive) {
-		    Photo p = (Photo) selectedphotos[curphotoindex];
+		    Photo p = (Photo) _selectedphotos[_curphotoindex];
 		    p.AddTag(t.Name);
 		    tagschosen = p.Tags;
 		  } else {
-		    foreach (Photo p in selectedphotos) {
+		    foreach (Photo p in _selectedphotos) {
 		      p.AddTag(t.Name);
 		    }
-		    tagschosen = ((Photo)selectedphotos[0]).Tags;
-		    foreach (Photo p in selectedphotos) {
+		    tagschosen = ((Photo) _selectedphotos[0]).Tags;
+		    foreach (Photo p in _selectedphotos) {
 		      tagschosen = Utils.GetIntersection(tagschosen, p.Tags);
 		    }
 		  }
 		  
-		  ignorechangedevent = true;
+		  _ignorechangedevent = true;
 		  textview3.Buffer.Text = Utils.GetDelimitedString(tagschosen, " ");
-		  ignorechangedevent = false;
+		  _ignorechangedevent = false;
 		}
 		
 		private void OnTagsChanged(object o, EventArgs args) {
 		  ArrayList parsedtags = Utils.ParseTagsFromString(textview3.Buffer.Text);
-		  if (parsedtags == null || ignorechangedevent) {
+		  if (parsedtags == null || _ignorechangedevent) {
 		    return;
 		  }
 		  if (checkbutton1.Active || !checkbutton1.Sensitive) {
-		    Photo p = (Photo) selectedphotos[curphotoindex];
+		    Photo p = (Photo) _selectedphotos[_curphotoindex];
 		    p.Tags = parsedtags;
 		  } else {
-		    foreach (Photo p in selectedphotos) {
+		    foreach (Photo p in _selectedphotos) {
 		      p.Tags = parsedtags;
 		    }
 		  }
@@ -328,11 +383,11 @@ using Glade;
 		  
 		  if (checkbutton1.Active || !checkbutton1.Sensitive) {
 		    // Per photo
-		    Photo p = (Photo) selectedphotos[curphotoindex];
+		    Photo p = (Photo) _selectedphotos[_curphotoindex];
 		    p.Title = entry1.Text;
 		  } else {
 		    // Group of photos
-		    foreach (Photo p in selectedphotos) {
+		    foreach (Photo p in _selectedphotos) {
 		      p.Title = entry1.Text;
 		    }
 		  }
@@ -344,39 +399,39 @@ using Glade;
 
 		  if (checkbutton1.Active || !checkbutton1.Sensitive) {
 		    // Per photo
-		    Photo p = (Photo) selectedphotos[curphotoindex];
+		    Photo p = (Photo) _selectedphotos[_curphotoindex];
 		    p.Description = entry2.Text;
 		  } else {
 		    // Group of photos
-		    foreach (Photo p in selectedphotos) {
+		    foreach (Photo p in _selectedphotos) {
 		      p.Description = entry2.Text;
 		    }
 		  }
 		}
 		
 		private void OnPrivacyChanged(object o, EventArgs args) {
-      if (ignorechangedevent) return;
+      if (_ignorechangedevent) return;
 		  
 		  if (checkbutton1.Active || !checkbutton1.Sensitive) {
-		    Photo p = (Photo) selectedphotos[curphotoindex];
+		    Photo p = (Photo) _selectedphotos[_curphotoindex];
 		    SetPhotoPrivacyFromBox(ref p, combobox1.Active);
 		  } else {
-		    for (int i=0; i<selectedphotos.Count; i++) {
-		      Photo p = (Photo) selectedphotos[i];
+		    for (int i=0; i < _selectedphotos.Count; i++) {
+		      Photo p = (Photo) _selectedphotos[i];
 		      SetPhotoPrivacyFromBox(ref p, combobox1.Active);
 		    }
 		  }
 		}
 		
 		private void OnLicenseChanged(object o, EventArgs args) {
-		  if (ignorechangedevent) return;
+		  if (_ignorechangedevent) return;
 		  
 		  if (checkbutton1.Active || !checkbutton1.Sensitive) {
-		    Photo p = (Photo) selectedphotos[curphotoindex];
+		    Photo p = (Photo) _selectedphotos[_curphotoindex];
 		    SetPhotoLicenseFromBox(ref p, combobox2.Active);
 		  } else {
-		    for (int i=0; i<selectedphotos.Count; i++) {
-		      Photo p = (Photo) selectedphotos[i];
+		    for (int i=0; i < _selectedphotos.Count; i++) {
+		      Photo p = (Photo) _selectedphotos[i];
 		      SetPhotoLicenseFromBox(ref p, combobox2.Active);
 		    }
 		  }
@@ -384,7 +439,7 @@ using Glade;
 		
 		private void OnPerPageCheckToggled(object o, EventArgs args) {
 		  if (checkbutton1.Active) {
-		    curphotoindex = 0;
+		    _curphotoindex = 0;
 		    button3.Sensitive = false; // Previous button
 		    button4.Sensitive = true; // Next button
 		    ShowInformationForCurrentPhoto();
@@ -394,22 +449,22 @@ using Glade;
 		}
 		
 		private void OnNextButtonClick(object o, EventArgs args) {
-		  curphotoindex += 1;
-		  if (curphotoindex == selectedphotos.Count -1) {
+		  _curphotoindex += 1;
+		  if (_curphotoindex == _selectedphotos.Count -1) {
 		    button4.Sensitive = false;
 		  }
-		  if (curphotoindex == 1) {
+		  if (_curphotoindex == 1) {
 		    button3.Sensitive = true;
 		  }
 		  ShowInformationForCurrentPhoto();
 		}
 		
 		private void OnPrevButtonClick(object o, EventArgs args) {
-		  curphotoindex -= 1;
-		  if (curphotoindex == 0) {
+		  _curphotoindex -= 1;
+		  if (_curphotoindex == 0) {
 		    button3.Sensitive = false;
 		  }
-		  if (curphotoindex == selectedphotos.Count - 2) {
+		  if (_curphotoindex == _selectedphotos.Count - 2) {
 		    button4.Sensitive = true;
 		  }
 		  ShowInformationForCurrentPhoto();
@@ -420,10 +475,16 @@ using Glade;
 		}
 		
 		private void OnSaveButtonClick(object o, EventArgs args) {
-		  foreach (Photo p in selectedphotos) {
+		  foreach (Photo p in _selectedphotos) {
+		    if (_isconflictmode) {
+		      Photo serverphoto = DeskFlickrUI.GetInstance().GetServerPhoto(p.Id);
+		      p.LastUpdate = serverphoto.LastUpdate;
+		      DeskFlickrUI.GetInstance().RemoveServerPhoto(p.Id);
+		    }
         PersistentInformation.GetInstance().SavePhoto(p);
 		  }
 		  window2.Destroy();
 		  DeskFlickrUI.GetInstance().UpdatePhotos();
+		  DeskFlickrUI.GetInstance().UpdateToolBarButtons();
 		}
 	}
