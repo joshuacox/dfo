@@ -2,9 +2,9 @@
 <UserCombinePreferences filename="/home/mann/DesktopFlickrOrganizer/DesktopFlickrOrganizer.mds">
   <Files>
     <File filename="Welcome" />
-    <File filename="./DeskFlickrUI.cs" />
     <File filename="./PersistentInformation.cs" />
     <File filename="./FlickrCommunicator.cs" />
+    <File filename="./DeskFlickrUI.cs" />
     <File filename="./PhotoEditorUI.cs" />
   </Files>
   <Views>
@@ -13,7 +13,7 @@
         <Node expanded="True">
           <Node name="DesktopFlickrOrganizer" expanded="True">
             <Node name="References" expanded="True" />
-            <Node name="PhotoEditorUI.cs" expanded="False" selected="True" />
+            <Node name="PersistentInformation.cs" expanded="False" selected="True" />
           </Node>
         </Node>
       </TreeView>
@@ -31,7 +31,7 @@
   <Properties>
     <Properties>
       <Property key="ActiveConfiguration" value="Debug" />
-      <Property key="ActiveWindow" value="/home/mann/DesktopFlickrOrganizer/PhotoEditorUI.cs" />
+      <Property key="ActiveWindow" value="/home/mann/DesktopFlickrOrganizer/PersistentInformation.cs" />
     </Properties>
   </Properties>
 </UserCombinePreferences>

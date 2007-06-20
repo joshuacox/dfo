@@ -51,6 +51,15 @@ using System.Collections;
 		  }
 		}
 		
+		public bool IsSameTags(ArrayList dtags) {
+		  if (tags.Count != dtags.Count) return false;
+		  bool issame = true;
+		  foreach (string t in tags) {
+		    if (!dtags.Contains(t)) issame = false;
+		  }
+		  return issame;
+		}
+		
 		public void AddTag(string tag) {
 		  if (!tags.Contains(tag)) {
 		    tags.Add(tag);

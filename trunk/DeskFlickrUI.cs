@@ -91,6 +91,16 @@ using Glade;
     
     private Thread _connthread;
     
+    public class SelectedPhoto {
+      public Photo photo;
+      public string path;
+      
+      public SelectedPhoto(Photo photo, string path) {
+        this.photo = photo;
+        this.path = path;
+      }
+    }
+    
 		private DeskFlickrUI() {
 		  _albums = new ArrayList();
 		  _photos = new ArrayList();
@@ -135,6 +145,16 @@ using Glade;
 		  Application.Run();
 		}
 	  
+	  private string GetInfoAlbum(Album a) {
+      System.Text.StringBuilder info = new System.Text.StringBuilder();
+      info.AppendFormat(
+          "<span font_desc='Times Bold 10'>{0}</span>", a.Title);
+      info.AppendLine();
+      info.AppendFormat(
+          "<span font_desc='Times Bold 10'>{0} pics</span>", a.NumPics);
+      return info.ToString();
+	  }
+	  
     public void PopulateAlbums() {
       Gtk.ListStore albumStore = (Gtk.ListStore) treeview1.Model;
       if (albumStore == null) {
@@ -154,13 +174,7 @@ using Glade;
           thumbnail = primaryPhoto.Thumbnail;
         }
         
-        System.Text.StringBuilder info = new System.Text.StringBuilder();
-        info.AppendFormat(
-            "<span font_desc='Times Bold 10'>{0}</span>", a.Title);
-        info.AppendLine();
-        info.AppendFormat(
-            "<span font_desc='Times Bold 10'>{0} pics</span>", a.NumPics);
-        TreeIter curiter = albumStore.AppendValues(thumbnail, info.ToString());
+        TreeIter curiter = albumStore.AppendValues(thumbnail, GetInfoAlbum(a));
         treeiters.Add(curiter);
         // Now add the setid to albums.
         this._albums.Add(a);
@@ -173,6 +187,17 @@ using Glade;
       treeview1.ShowAll();
     }
     
+    private string GetInfoTag(string tag) {
+      System.Text.StringBuilder info = new System.Text.StringBuilder();
+      info.AppendFormat(
+          "<span font_desc='Times Bold 10'>{0}</span>", tag);
+      info.AppendLine();
+      int numpics = PersistentInformation.GetInstance().GetCountPhotosForTag(tag);
+      info.AppendFormat(
+          "<span font_desc='Times Bold 10'>{0} pics</span>", numpics);
+      return info.ToString();
+    }
+    
     public void PopulateTags() {
       Gtk.ListStore tagStore = (Gtk.ListStore) treeview1.Model;
       if (tagStore == null) {
@@ -183,19 +208,12 @@ using Glade;
       this._tags.Clear();
       
       ArrayList treeiters = new ArrayList();
-      foreach (Tag tag in PersistentInformation.GetInstance().GetAllTags()) {
-        Photo p = 
-            PersistentInformation.GetInstance().GetSinglePhotoForTag(tag.Name);
-        System.Text.StringBuilder info = new System.Text.StringBuilder();
-        info.AppendFormat(
-            "<span font_desc='Times Bold 10'>{0}</span>", tag.Name);
-        info.AppendLine();
-        info.AppendFormat(
-            "<span font_desc='Times Bold 10'>{0} pics</span>", tag.NumberOfPics);
-        TreeIter curiter = tagStore.AppendValues(p.Thumbnail, info.ToString());
+      foreach (string tag in PersistentInformation.GetInstance().GetAllTags()) {
+        Photo p = PersistentInformation.GetInstance().GetSinglePhotoForTag(tag);
+        TreeIter curiter = tagStore.AppendValues(p.Thumbnail, GetInfoTag(tag));
         treeiters.Add(curiter);
         // Now add the tag name to _tags.
-        this._tags.Add(tag.Name);
+        this._tags.Add(tag);
       }
       treeview1.Model = tagStore;
       if (treeiters.Count > 0) {
@@ -258,49 +276,57 @@ using Glade;
 		  int destindex = path.Indices[0];
 		  
 		  if (selectedtab == 0) { // albums
+		    string setid = ((Album) _albums[destindex]).SetId;
+		    
 		    foreach (TreePath tp in treeview2.Selection.GetSelectedRows()) {
 		      string photoid = ((Photo) _photos[tp.Indices[0]]).Id;
-		      string setid = ((Album) _albums[destindex]).SetId;
-		      
-		      // Scenario 1: New photo is being added to set. Insert a new 
-		      // entry to the table, and mark it dirty.
-		      // Scenario 2: A photo is already present in the set. The photo
-		      // is not dirty, and not deleted. User
-		      // tries to insert the same photo in the set again. Nothing
-		      // should happen.
-		      // Scenario 3: A photo has been deleted from the set. User
-		      // tries to add the photo back to the set. The isdirty bit should
-		      // be cleared, same for isdeleted bit.
 		      bool exists = PersistentInformation.GetInstance()
 		          .HasAlbumPhoto(photoid, setid);
 		      if (exists) {
-		        bool isdirty = PersistentInformation.GetInstance()
-		            .IsAlbumToPhotoDirty(photoid, setid);
-		        bool isdeleted = PersistentInformation.GetInstance()
-		            .IsAlbumToPhotoMarkedDeleted(photoid, setid);
-		            
-		        if (!isdirty && !isdeleted) continue;
-		        if (isdeleted) {
-		          PersistentInformation.GetInstance()
-		            .MarkPhotoForDeletionFromAlbum(photoid, setid, false);
+            if (!streambutton.Active && !conflictbutton.Active
+		            && treeview2.Selection.GetSelectedRows().Length == 1){
+	          // Scenario: The user is viewing the set, and decides to
+	          // change the primary photo. He can do so by dragging the photo
+	          // from the respective set, to the set itself. However, make
+	          // sure that only one photo is selected.
+              TreePath setselectedpath = treeview1.Selection.GetSelectedRows()[0];
+              if (setselectedpath.Indices[0] == destindex) {
+                // The album selected is the same as the album the photo is
+                // dragged on.
+	              PersistentInformation.GetInstance().SetPrimaryPhotoForAlbum(setid, photoid);
+	              PersistentInformation.GetInstance().SetAlbumDirty(setid, true);
+	            }
 		        }
-		      } else {
-		        PersistentInformation.GetInstance()
-		            .AddPhotoToAlbum(photoid, setid);
-		        PersistentInformation.GetInstance()
-		            .SetAlbumToPhotoDirty(photoid, setid, true);
+		      } else { // The photo isn't present in set.
+		        PersistentInformation.GetInstance().AddPhotoToAlbum(photoid, setid);
+		        PersistentInformation.GetInstance().SetAlbumDirty(setid, true);
 		      }
 		    }
-		    PopulateAlbums();
-		  } else if (selectedtab == 1) { // tags
+		    UpdateAlbumAtPath(path, (Album) _albums[destindex]);
+		  } 
+		  else if (selectedtab == 1) { // tags
 		    foreach (TreePath tp in treeview2.Selection.GetSelectedRows()) {
 		      string photoid = ((Photo) _photos[tp.Indices[0]]).Id;
 		      string tag = (string) _tags[destindex];
 		      PersistentInformation.GetInstance().InsertTag(photoid, tag);
 		      PersistentInformation.GetInstance().SetPhotoDirty(photoid, true);
 		    }
-		    PopulateTags();
+		    UpdateTagAtPath(path, (string) _tags[destindex]);
 		  }
+		}
+		
+		private void UpdateAlbumAtPath(TreePath path, Album a) {
+		  ListStore albumStore = (ListStore) treeview1.Model;
+		  TreeIter iter;
+		  albumStore.GetIter(out iter, path);
+		  albumStore.SetValue(iter, 1, GetInfoAlbum(a));
+		}
+		
+		private void UpdateTagAtPath(TreePath path, string tag) {
+		  ListStore tagStore = (ListStore) treeview1.Model;
+		  TreeIter iter;
+		  tagStore.GetIter(out iter, path);
+		  tagStore.SetValue(iter, 1, GetInfoTag(tag));
 		}
 		
 		// This method is a general purpose method, meant to take of changes
@@ -425,26 +451,8 @@ using Glade;
     // provided here wouldn't exactly show the absolute position in the
     // model, because entries would have been filtered out.
     private Photo GetPhoto(TreePath path) {
-      int filteredindex = path.Indices[0];
-      ArrayList filteredPhotos = new ArrayList();
-      foreach (Photo p in _photos) {
-        if (FilterPhoto(p)) filteredPhotos.Add(p);
-      }
-      return (Photo) filteredPhotos[filteredindex];
-    }
-    
-    private int GetPhotoIndex(TreePath path) {
-      int filteredindex = path.Indices[0];
-      int findex = -1;
-      int realindex = -1;
-      foreach (Photo p in _photos) {
-        realindex++;
-        if (FilterPhoto(p)) findex++;
-        if (findex == filteredindex) {
-          return realindex;
-        }
-      }
-      return -1;
+      TreePath childpath = filter.ConvertPathToChildPath(path);
+      return (Photo) _photos[childpath.Indices[0]];
     }
     
     private void OnFilterEntryChanged(object o, EventArgs args) {
@@ -480,10 +488,11 @@ using Glade;
       }
       PopulatePhotosTreeView(photos);
     }
-    
-    public void UpdatePhotos() {
-      foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
-        Photo p = GetPhoto(path);
+
+    public void UpdatePhotos(ArrayList selectedphotos) {
+      foreach (SelectedPhoto sel in selectedphotos) {
+        Photo p = sel.photo;
+        TreePath path = new TreePath(sel.path);
         TreeIter iter;
         photoStore.GetIter(out iter, path);
         photoStore.SetValue(iter, 1, GetCol1Data(p));
@@ -542,7 +551,9 @@ using Glade;
 		private void OnDoubleClickPhoto(object o, RowActivatedArgs args) {
 		  ArrayList selectedphotos = new ArrayList();
       Photo p = GetPhoto(args.Path);
-      selectedphotos.Add(p);
+      TreePath childpath = filter.ConvertPathToChildPath(args.Path);
+      SelectedPhoto sel = new SelectedPhoto(p, childpath.ToString());
+      selectedphotos.Add(sel);
 		  PhotoEditorUI.FireUp(selectedphotos, conflictbutton.Active);
 		}
 				
@@ -553,7 +564,9 @@ using Glade;
 		    ArrayList selectedphotos = new ArrayList();
         foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
           Photo p = GetPhoto(path);
-          selectedphotos.Add(p);
+          TreePath childpath = filter.ConvertPathToChildPath(path);
+          SelectedPhoto sel = new SelectedPhoto(p, childpath.ToString());
+          selectedphotos.Add(sel);
         }
         PhotoEditorUI.FireUp(selectedphotos, conflictbutton.Active);
   		} // check left tree now.
@@ -819,40 +832,25 @@ using Glade;
     }
     
     private void OnPhotoDraggedForDeletion(object o, DragDataReceivedArgs args) {
+      // Don't do anything if stream button or conflict button is pressed.
+      if (streambutton.Active || conflictbutton.Active) return;
+      
       if (selectedtab == 0) { // albums
         string setid = ((Album) _albums[leftcurselectedindex]).SetId;
         foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
 		      string photoid = GetPhoto(path).Id;
-		      // Scenario 1: A user drags a new photo to set, the photo is added,
-		      // and the entry is marked dirty. Now, he removes the photo from
-		      // the set. So, the entry should be deleted.
-		      // Scenario 2: A user deletes a photo from set. The photo is
-		      // marked for deletion. Somehow (quite
-		      // impossible though), he tries to delete the photo from set again.
-		      // The entry should not be removed, basically, status quo should
-		      // maintain.
-		      bool isdirty = PersistentInformation.GetInstance()
-		                        .IsAlbumToPhotoDirty(photoid, setid);
-		      bool isdeleted = PersistentInformation.GetInstance()
-		                        .IsAlbumToPhotoMarkedDeleted(photoid, setid);
-		                        
-		      if (isdirty && !isdeleted) {
-		        PersistentInformation.GetInstance()
-		                        .DeletePhotoEntryFromAlbum(photoid, setid);
-		      } else {
-		        PersistentInformation.GetInstance()
-		                        .MarkPhotoForDeletionFromAlbum(photoid, setid, true);
-		      }
+		      PersistentInformation.GetInstance().DeletePhotoFromAlbum(photoid, setid);
+		      PersistentInformation.GetInstance().SetAlbumDirty(setid, true);
         }
-        PopulateAlbums();
       } else if (selectedtab == 1) { // tags
         string tag = (string) _tags[leftcurselectedindex];
         foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
 		      string photoid = GetPhoto(path).Id;
 		      PersistentInformation.GetInstance().DeleteTag(photoid, tag);
+		      PersistentInformation.GetInstance().SetPhotoDirty(photoid, true);
 		    }
-		    PopulateTags();
       } // if else ends here.
+      RefreshLeftTreeView();
     }
     
     public void ClearServerPhotos() {

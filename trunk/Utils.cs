@@ -20,7 +20,12 @@ using System.Collections;
 		  if (tagstring.Contains("\"")) return null;
 		  
 		  string[] tokens = tagstring.Split(' ');
-		  ArrayList tags = new ArrayList(tokens);
+		  ArrayList tags = new ArrayList();
+		  foreach (string token in tokens) {
+		    if (!token.Trim().Equals("")) {
+		      tags.Add(token.Trim());
+		    }
+		  }
 		  return tags;
 		}
 	}

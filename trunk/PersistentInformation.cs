@@ -53,9 +53,7 @@ using Mono.Data.SqliteClient;
 		private static string CREATE_ALBUM_PHOTO_MAPPING_TABLE = 
 		    "create table setphoto (\n"
 		    + " setid varchar(25),\n"
-		    + " photoid varchar(10),\n"
-		    + " isdirty integer default 0,\n"
-		    + " isdeleted integer default 0\n"
+		    + " photoid varchar(10)\n"
 		    + ");";
 		
 		private static string CREATE_PHOTO_TAG_TABLE =
@@ -359,17 +357,28 @@ using Mono.Data.SqliteClient;
 		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
       dbcon.Open();
 		  IDbCommand dbcmd = dbcon.CreateCommand();
-		  dbcmd.CommandText = "select id from photo where isdirty=1;";
+		  dbcmd.CommandText = "select * from photo where isdirty=1;";
 		  IDataReader reader = dbcmd.ExecuteReader();
-		  ArrayList photoids = new ArrayList();
-		  while (reader.Read()) {
-		    string photoid = reader.GetString(0);
-		    photoids.Add(photoid);
+		  ArrayList photos = new ArrayList();
+		  while(reader.Read()) {
+		    string id = reader.GetString(0);
+		    string title = reader.GetString(1);
+		    string desc = reader.GetString(2);
+		    int license = reader.GetInt32(3);
+		    int isPublic = reader.GetInt32(4);
+		    int isFriend = reader.GetInt32(5);
+		    int isFamily = reader.GetInt32(6);
+		    string lastupdated = reader.GetString(7);
+
+		    Photo photo = new Photo(id, title, desc, license, isPublic,
+		                      isFriend, isFamily, lastupdated);
+		    photo.Tags = GetTags(id);
+		    photos.Add(photo);
 		  }
 		  reader.Close();
 		  dbcmd.Dispose();
 		  dbcon.Close();
-		  return photoids;
+		  return photos;
 		  }
 		}
 		
@@ -487,11 +496,20 @@ using Mono.Data.SqliteClient;
     }
     
     public bool IsAlbumDirty(string setid) {
+      if (!HasAlbum(setid)) return false;
       lock (_albumlock) {
       return RunIsTrueQuery(String.Format(
           "select isdirty from album where setid = '{0}';", setid));
       }
     }
+		
+		public void SetPrimaryPhotoForAlbum(string setid, string photoid) {
+      if (!HasAlbum(setid)) throw new Exception();
+      lock (_albumlock) {
+      RunNonQuery(String.Format(
+          "update album set photoid={0} where setid='{1}';", photoid, setid));
+      }
+		}
 		
 		// This method doesn't remove the photos associated with the album.
 		// It deletes only the entry in album table.
@@ -546,6 +564,32 @@ using Mono.Data.SqliteClient;
       }
 		}
 		
+		public ArrayList GetDirtyAlbums(bool isdirty) {
+		  lock (_albumlock) {
+      ArrayList albums = new ArrayList();
+      IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
+      dbcon.Open();
+      IDbCommand dbcmd = dbcon.CreateCommand();
+      int dirty = 0;
+      if (isdirty) dirty = 1;
+		  dbcmd.CommandText = String.Format(
+		      "select * from album where isdirty={0};", dirty);
+		  IDataReader reader = dbcmd.ExecuteReader();
+      while(reader.Read()) {
+        string setid = reader.GetString(0);
+        string title = reader.GetString(1);
+        string desc = reader.GetString(2);
+        string photoid = reader.GetString(3);
+        Album album = new Album(setid, title, desc, photoid);
+        albums.Add(album);
+      }
+      reader.Close();
+      dbcmd.Dispose();
+      dbcon.Close();
+      return albums;
+      }
+		}
+		
 		/*
 		 * Photos assigned to sets and retrieval mechanisms.
 		 */
@@ -574,55 +618,17 @@ using Mono.Data.SqliteClient;
 		  }
 		}
 		
-		public bool IsAlbumToPhotoDirty(string photoid, string setid) {
-		  lock (_setphotolock) {
-		  return RunIsTrueQuery(String.Format(
-		      "select isdirty from setphoto where setid='{0}' and photoid='{1}';",
-		      setid, photoid));
-		  }
-		}
-		
-		public void SetAlbumToPhotoDirty(string photoid, string setid, bool dirty) {
-		  lock (_setphotolock) {
-		  int isdirty = 0;
-		  if (dirty) isdirty = 1;
-		  RunNonQuery(String.Format(
-		      "update setphoto set isdirty = {0} where setid='{1}' and photoid='{2}';",
-		      isdirty, setid, photoid));
-		  }
-		}
-		
-		public bool IsAlbumToPhotoMarkedDeleted(string photoid, string setid) {
-		  lock (_setphotolock) {
-		  return RunIsTrueQuery(String.Format(
-		      "select isdeleted from setphoto where setid='{0}' and photoid='{1}';",
-		      setid, photoid));
-		  }
-		}
-		
-		public void MarkPhotoForDeletionFromAlbum(string photoid, 
-		    string setid, bool deleted) {
-		  lock (_setphotolock) {
-		  int isdeleted = 0;
-		  if (deleted) isdeleted = 1;
-		  RunNonQuery(String.Format(
-		      "update setphoto set isdirty = {0}, isdeleted = {0}"
-		      + " where setid='{1}' and photoid='{2}';", isdeleted, setid, photoid));
-		  }
-		}
-		
-		public void DeletePhotoEntryFromAlbum(string photoid, string setid) {
+		public void DeletePhotoFromAlbum(string photoid, string setid) {
 		  lock (_setphotolock) {
 		  RunNonQuery(String.Format(
 		      "delete from setphoto where setid='{0}' and photoid='{1}';",
 		      setid, photoid));
 		  }
 		}
-		
-		public void DeleteCleanPhotoEntriesFromAlbum(string setid) {
+
+		public void DeleteAllPhotosFromAlbum(string setid) {
 		  lock (_setphotolock) {
-		  RunNonQuery(String.Format(
-		      "delete from setphoto where setid='{0}' and isdirty=0;", setid));
+		  RunNonQuery(String.Format("delete from setphoto where setid='{0}';", setid));
 		  }
 		}
 		
@@ -669,17 +675,35 @@ using Mono.Data.SqliteClient;
 		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
       dbcon.Open();
 		  IDbCommand dbcmd = dbcon.CreateCommand();
-		  dbcmd.CommandText = "select tag, count(photoid) from tag group by tag;";
+		  dbcmd.CommandText = "select distinct tag from tag;";
 		  IDataReader reader = dbcmd.ExecuteReader();
 		  while(reader.Read()) {
-		    Tag t = new Tag(reader.GetString(0), reader.GetInt32(1));
-		    tags.Add(t);
+		    tags.Add(reader.GetString(0));
 		  }
 		  reader.Close();
 		  dbcmd.Dispose();
 		  dbcon.Close();
 		  tags.Sort();
 		  return tags;
+		  }
+		}
+		
+		public int GetCountPhotosForTag(string tag) {
+		  lock (_taglock) {
+      int num = 0;
+		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
+      dbcon.Open();
+		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  dbcmd.CommandText = String.Format(
+		      "select count(photoid) from tag where tag='{0}';", tag);
+		  IDataReader reader = dbcmd.ExecuteReader();
+		  if (reader.Read()) {
+		    num = reader.GetInt32(0);
+		  }
+		  reader.Close();
+		  dbcmd.Dispose();
+		  dbcon.Close();
+		  return num;
 		  }
 		}
 		
