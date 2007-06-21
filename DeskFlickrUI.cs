@@ -38,6 +38,9 @@ using Glade;
     Toolbar toolbar1;
     
     [Glade.Widget]
+    Toolbar toolbar2;
+    
+    [Glade.Widget]
     EventBox eventbox1;
 
     [Glade.Widget]
@@ -64,6 +67,9 @@ using Glade;
     ToggleToolButton streambutton;
     ToggleToolButton conflictbutton;
     ToolButton syncbutton;
+    
+    // For toolbar2 on top left
+    ToolButton connectbutton;
     
     public static string ICON_PATH = "icons/Font-Book.ico";
     public static string THUMBNAIL_PATH = "icons/FontBookThumbnail.png";
@@ -123,10 +129,11 @@ using Glade;
 		  // The value of stream button in this toolbar is being used by
 		  // other initializations. So, this should be positioned _before_ them.
 		  SetHorizontalToolBar();
+		  SetTopLeftToolBar();
 		  
 		  // Set Text for the label
 		  label1.Text = "Desktop Flickr Organizer";
-      label12.Text = "Search: ";
+      label12.Markup = "<span weight='bold'>Search: </span>";
       entry5.Changed += OnFilterEntryChanged;
 		  
 		  SetLeftTextView();
@@ -586,6 +593,41 @@ using Glade;
   		  AlbumEditorUI.FireUp(album);
   		}
 		}
+			
+		private void OnDownloadButtonClicked(object o, EventArgs args) {
+      FileChooserDialog chooser = new FileChooserDialog(
+          "Select a folder", null, FileChooserAction.SelectFolder,
+          Stock.Open, ResponseType.Ok, Stock.Cancel, ResponseType.Cancel);
+      
+      chooser.SetFilename(PersistentInformation.GetInstance().DownloadFoldername);
+      ResponseType choice = (ResponseType) chooser.Run();
+      string foldername = "";
+		  if (choice == ResponseType.Ok) {
+       foldername = chooser.Filename;
+       PersistentInformation.GetInstance().DownloadFoldername = foldername;
+      }
+      chooser.Destroy();
+      if (foldername.Equals("")) return;
+      
+      // Selected folder for downloading.
+      ArrayList photoids = new ArrayList();
+		  if (treeview2.Selection.GetSelectedRows().Length > 0) {
+		    foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
+		      Photo p = new Photo(GetPhoto(path));
+		      photoids.Add(p.Id);
+		    }
+		  }
+	    else if (treeview1.Selection.GetSelectedRows().Length > 0) {
+		    TreePath path = treeview1.Selection.GetSelectedRows()[0];
+  		  Album album = new Album((Album) _albums[path.Indices[0]]);
+  		  photoids = PersistentInformation.GetInstance().GetPhotoIdsForAlbum(album.SetId);
+  		  foldername = String.Format("{0}/{1}", foldername, album.Title);
+		  }
+		  Utils.EnsureDirectoryExists(foldername);
+		  foreach (string id in photoids) {
+		    PersistentInformation.GetInstance().InsertEntryToDownload(id, foldername);
+		  }
+		}
 		
 		private void OnStreamButtonClicked(object o, EventArgs args) {
 		  if (streambutton.Active) {
@@ -612,12 +654,51 @@ using Glade;
 		  }
 		}
 		
+		private void OnUploadButtonClicked(object o, EventArgs args) {
+		  FileChooserDialog chooser = new FileChooserDialog(
+          "Select images to upload", null, FileChooserAction.Open,
+          Stock.Open, ResponseType.Ok, Stock.Cancel, ResponseType.Cancel);
+      chooser.SetFilename(PersistentInformation.GetInstance().UploadFilename);
+      chooser.SelectMultiple = true;
+      ResponseType choice = (ResponseType) chooser.Run();
+      string[] filenames = null;
+		  if (choice == ResponseType.Ok) {
+       filenames = chooser.Filenames;
+       PersistentInformation.GetInstance().UploadFilename = filenames[0];
+      }
+      chooser.Destroy();
+      if (filenames == null) return;
+      foreach (string filename in filenames) {
+        Console.WriteLine("Upload file: " + filename);
+        PersistentInformation.GetInstance().InsertEntryToUpload(filename);
+      }
+		}
+		
+		private void SetTopLeftToolBar() {
+		  connectbutton = new ToolButton(Stock.Connect);
+		  connectbutton.Sensitive = true;
+		  connectbutton.Clicked += new EventHandler(ConnectionHandler);
+		  toolbar2.Insert(connectbutton, -1);
+		  
+		  ToolButton quitbutton = new ToolButton(Stock.Quit);
+		  quitbutton.Sensitive = true;
+		  quitbutton.Clicked += new EventHandler(OnQuitEvent);
+		  toolbar2.Insert(quitbutton, -1);
+		}
+		
 		private void SetHorizontalToolBar() {
 		  ToolButton editbutton = new ToolButton(Stock.Edit);
 		  editbutton.IsImportant = true;
 		  editbutton.Sensitive = true;
 		  editbutton.Clicked += new EventHandler(OnEditButtonClicked);
 		  toolbar1.Insert(editbutton, -1);
+		  
+		  ToolButton downloadbutton = new ToolButton(Stock.SortDescending);
+		  downloadbutton.IsImportant = true;
+		  downloadbutton.Sensitive = true;
+		  downloadbutton.Label = "Download Photos";
+		  downloadbutton.Clicked += new EventHandler(OnDownloadButtonClicked);
+		  toolbar1.Insert(downloadbutton, -1);
 		  
 		  streambutton = new ToggleToolButton(Stock.SelectAll);
 		  streambutton.IsImportant = true;
@@ -634,12 +715,19 @@ using Glade;
 		  toolbar1.Insert(conflictbutton, -1);
 		  UpdateToolBarButtons();
 		  
-		  syncbutton = new ToolButton(Stock.SortAscending);
+		  syncbutton = new ToolButton(Stock.Refresh);
 		  syncbutton.IsImportant = true;
 		  syncbutton.Sensitive = true;
 		  syncbutton.Label = "Sync Now";
 		  syncbutton.Clicked += new EventHandler(ConnectionHandler);
 		  toolbar1.Insert(syncbutton, -1);
+		  
+		  ToolButton uploadbutton = new ToolButton(Stock.SortAscending);
+		  uploadbutton.IsImportant = true;
+		  uploadbutton.Sensitive = true;
+		  uploadbutton.Label = "Upload Photos";
+		  uploadbutton.Clicked += new EventHandler(OnUploadButtonClicked);
+		  toolbar1.Insert(uploadbutton, -1);
 		}
 		  	
   	public void UpdateToolBarButtons() {
@@ -701,6 +789,7 @@ using Glade;
 		  progressbar1.Adjustment.Lower = 0;
 		  progressbar1.Adjustment.Upper = max;
 		  progressbar1.Adjustment.Value = 0;
+		  if (max > 0) IncrementProgressBar(0);
 		}
 		
 		public void SetValueProgressBar(int val) {
@@ -777,6 +866,7 @@ using Glade;
   	  imagemenuitem2.Sensitive = issensitive;
       checkmenuitem3.Sensitive = issensitive;
       syncbutton.Sensitive = issensitive;
+      connectbutton.Sensitive = issensitive;
     }
     
   	private void OnWorkOfflineEvent(object sender, EventArgs args) {
@@ -786,6 +876,8 @@ using Glade;
   	    if (_connthread != null) _connthread.Abort();
   	    _connthread = null;
   	    SetStatusLabel("Done. Working Offline");
+  	    SetLimitsProgressBar(0);
+  	    SetProgressBarText("");
   	  } else { // Work ON-line.
   	    if (_connthread != null) _connthread.Abort();
   	    _connthread = null;
