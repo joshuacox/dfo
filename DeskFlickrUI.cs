@@ -377,7 +377,7 @@ using Glade;
 		public void OnDoubleClickLeftView(object o, RowActivatedArgs args) {
 		  if (selectedtab != 0) return; // if not albums, then don't care.
 		  int index = args.Path.Indices[0];
-		  Album album = (Album) _albums[index];
+		  Album album = new Album((Album) _albums[index]);
 		  AlbumEditorUI.FireUp(album);
 		}
 		
@@ -456,6 +456,12 @@ using Glade;
       return (Photo) _photos[childpath.Indices[0]];
     }
     
+    private void ReplacePhoto(TreePath path, Photo p) {
+      TreePath childpath = filter.ConvertPathToChildPath(path);
+      _photos.RemoveAt(childpath.Indices[0]);
+      _photos.Insert(childpath.Indices[0], p);
+    }
+    
     private void OnFilterEntryChanged(object o, EventArgs args) {
       filter.Refilter();
     }
@@ -492,14 +498,14 @@ using Glade;
 
     public void UpdatePhotos(ArrayList selectedphotos) {
       foreach (SelectedPhoto sel in selectedphotos) {
-        Photo p = sel.photo;
         TreePath path = new TreePath(sel.path);
+        ReplacePhoto(path, sel.photo);
         TreeIter iter;
         photoStore.GetIter(out iter, path);
-        photoStore.SetValue(iter, 1, GetCol1Data(p));
-        photoStore.SetValue(iter, 2, GetCol2Data(p));
-        photoStore.SetValue(iter, 3, GetCol3Data(p));
-        photoStore.SetValue(iter, 4, GetCol4Data(p));
+        photoStore.SetValue(iter, 1, GetCol1Data(sel.photo));
+        photoStore.SetValue(iter, 2, GetCol2Data(sel.photo));
+        photoStore.SetValue(iter, 3, GetCol3Data(sel.photo));
+        photoStore.SetValue(iter, 4, GetCol4Data(sel.photo));
       }
     }
     
@@ -551,7 +557,10 @@ using Glade;
 		
 		private void OnDoubleClickPhoto(object o, RowActivatedArgs args) {
 		  ArrayList selectedphotos = new ArrayList();
-      Photo p = GetPhoto(args.Path);
+		  // Make sure that we don't point to the photo object stored here.
+		  // Otherwise, even if the editing is not saved, it would be stored
+		  // in _photos. So, create a new Photo object.
+      Photo p = new Photo(GetPhoto(args.Path));
       TreePath childpath = filter.ConvertPathToChildPath(args.Path);
       SelectedPhoto sel = new SelectedPhoto(p, childpath.ToString());
       selectedphotos.Add(sel);
@@ -564,7 +573,7 @@ using Glade;
 		  if (treeview2.Selection.GetSelectedRows().Length > 0) {
 		    ArrayList selectedphotos = new ArrayList();
         foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
-          Photo p = GetPhoto(path);
+          Photo p = new Photo(GetPhoto(path));
           TreePath childpath = filter.ConvertPathToChildPath(path);
           SelectedPhoto sel = new SelectedPhoto(p, childpath.ToString());
           selectedphotos.Add(sel);
@@ -573,7 +582,7 @@ using Glade;
   		} // check left tree now.
   		else if (treeview1.Selection.GetSelectedRows().Length > 0) {
   		  TreePath path = treeview1.Selection.GetSelectedRows()[0];
-  		  Album album = (Album) _albums[path.Indices[0]];
+  		  Album album = new Album((Album) _albums[path.Indices[0]]);
   		  AlbumEditorUI.FireUp(album);
   		}
 		}

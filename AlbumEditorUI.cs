@@ -21,7 +21,7 @@ using Glade;
 		Entry entry3;
 		
 		[Glade.Widget]
-		Entry entry4;
+    TextView textview6;
 		
 		[Glade.Widget]
 		Button button8;
@@ -48,10 +48,10 @@ using Glade;
 		  label10.Text = "Description: ";
 		  
 		  entry3.Text = album.Title;
-		  entry4.Text = album.Desc;
+		  textview6.Buffer.Text = album.Desc;
 		  
 		  entry3.Changed += new EventHandler(OnTitleChanged);
-		  entry4.Changed += new EventHandler(OnDescriptionChanged);
+		  textview6.Buffer.Changed += new EventHandler(OnDescriptionChanged);
 		  
 		  button7.Clicked += new EventHandler(OnCancelButtonClicked);
 		  button8.Clicked += new EventHandler(OnSaveButtonClicked);
@@ -70,7 +70,7 @@ using Glade;
 		}
 		
 		public void OnDescriptionChanged(object o, EventArgs args) {
-		  _album.Desc = entry4.Text;
+		  _album.Desc = textview6.Buffer.Text;
 		}
 		
 		public void OnCancelButtonClicked(object o, EventArgs args) {
