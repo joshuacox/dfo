@@ -16,11 +16,15 @@ using Mono.Data.SqliteClient;
 		private readonly object _albumlock;
 		private readonly object _setphotolock;
 		private readonly object _taglock;
+		private readonly object _downloadlock;
+		private readonly object _uploadlock;
 		private readonly object _writelock;
 		
 		private static string GCONF_APP_PATH = "/apps/DesktopFlickrOrganizer";
 		private static string SECRET_TOKEN = GCONF_APP_PATH + "/token";
 		private static string ORDERED_SETS_LIST = GCONF_APP_PATH + "/sets";
+		private static string DOWNLOAD_FOLDER = GCONF_APP_PATH + "/downloadfolder";
+		private static string UPLOAD_FILE = GCONF_APP_PATH + "/uploadfile";
 		
 		private static string HOME = 
 		    System.Environment.GetEnvironmentVariable("HOME") + "/.desktopflickr";
@@ -61,20 +65,33 @@ using Mono.Data.SqliteClient;
 		    + " photoid varchar(25),\n"
 		    + " tag varchar(56)\n"
 		    + ");";
-
-    private void EnsureDirectoryExists(string dir) {
-      System.IO.DirectoryInfo dirInfo = new System.IO.DirectoryInfo(dir);
-		  if (!dirInfo.Exists) {
-		    dirInfo.Create();
-		    Console.WriteLine("Created directory: " + dir);
-		  }
+		    
+	  private static string CREATE_DOWNLOAD_TABLE =
+	      "create table download (\n"
+	      + " photoid varchar(25),\n"
+	      + " foldername varchar(256)\n"
+	      + ");";
+    
+    private static string CREATE_UPLOAD_TABLE =
+        "create table upload (\n"
+        + " filename varchar(256)\n"
+        + ");";
+    
+    public class DownloadEntry {
+      public string photoid;
+      public string foldername;
+      
+      public DownloadEntry(string photoid, string foldername) {
+        this.photoid = photoid;
+        this.foldername = foldername;
+      }
     }
     
 		private PersistentInformation()
 		{
-      EnsureDirectoryExists(HOME);
-      EnsureDirectoryExists(THUMBNAIL_DIR);
-      EnsureDirectoryExists(SMALL_IMAGE_DIR);
+      Utils.EnsureDirectoryExists(HOME);
+      Utils.EnsureDirectoryExists(THUMBNAIL_DIR);
+      Utils.EnsureDirectoryExists(SMALL_IMAGE_DIR);
       
       // Attempt creation of tables. If the table exists, the command
       // execution will throw an exception. Dirty way, but had to be done.
@@ -98,6 +115,8 @@ using Mono.Data.SqliteClient;
         AddIndex("create index itag1 on tag(photoid);");
         AddIndex("create index itag2 on tag(tag);");
       }
+      CreateTable(CREATE_DOWNLOAD_TABLE);
+      CreateTable(CREATE_UPLOAD_TABLE);
       
       client = new GConf.Client();
       rand = new Random();
@@ -105,6 +124,8 @@ using Mono.Data.SqliteClient;
       _photolock = new object();
       _setphotolock = new object();
       _taglock = new object();
+      _downloadlock = new object();
+      _uploadlock = new object();
       _writelock = new object();
 		}
 		
@@ -185,7 +206,7 @@ using Mono.Data.SqliteClient;
 		    FileStream fs = new FileStream(GetThumbnailPath(photoid), 
 		                                   FileMode.Open, FileAccess.Read);
 		    return new Gdk.Pixbuf(fs);
-		  } catch(Exception e) {
+		  } catch(Exception) {
 		    return null;
 		  }
 		}
@@ -204,7 +225,7 @@ using Mono.Data.SqliteClient;
 		    FileStream fs = new FileStream(GetSmallImagePath(photoid), 
 		                                   FileMode.Open, FileAccess.Read);
 		    return new Gdk.Pixbuf(fs);
-		  } catch(Exception e) {
+		  } catch(Exception) {
 		    return null;
 		  }
 		}
@@ -801,10 +822,119 @@ using Mono.Data.SqliteClient;
 		}
 		
 		/*
-		 * License retrieval and viewing methods.
+		 * Download table methods.
 		 */
-		public Gdk.Pixbuf GetLicenseThumbnail(string photoid) {
-		  return null;
+		public void InsertEntryToDownload(string photoid, string foldername) {
+		  if (IsDownloadEntryExists(photoid, foldername)) return;
+		  lock (_downloadlock) {
+		  string query = String.Format(
+		      "insert into download (photoid, foldername) values ('{0}', '{1}');",
+		      photoid, foldername);
+		  RunNonQuery(query);
+		  }
+		}
+		
+		public bool IsDownloadEntryExists(string photoid, string foldername) {
+		  lock (_downloadlock) {
+		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
+		  dbcon.Open();
+		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  dbcmd.CommandText = String.Format(
+		      "select * from download where photoid='{0}' and foldername='{1}';",
+		      photoid, foldername);
+		  IDataReader reader = dbcmd.ExecuteReader();
+		  return reader.Read();
+		  }
+		}
+		
+		public void DeleteEntryFromDownload(DownloadEntry entry) {
+		  lock (_downloadlock) {
+		  string query = String.Format(
+		      "delete from download where photoid='{0}' and foldername='{1}';", 
+		      entry.photoid, entry.foldername);
+		  RunNonQuery(query);
+		  }
+		}
+		
+		public ArrayList GetEntriesToDownload() {
+		  lock (_downloadlock) {
+		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
+		  dbcon.Open();
+		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  dbcmd.CommandText = "select * from download;";
+		  IDataReader reader = dbcmd.ExecuteReader();
+		  ArrayList downloadentries = new ArrayList();
+		  while (reader.Read()) {
+		    string photoid = reader.GetString(0);
+		    string foldername = reader.GetString(1);
+		    DownloadEntry entry = new DownloadEntry(photoid, foldername);
+		    downloadentries.Add(entry);
+		  }
+		  return downloadentries;
+		  }
+		}
+		
+		public string GetFolderNameForPhotoId(string photoid) {
+		  lock (_downloadlock) {
+		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
+		  dbcon.Open();
+		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  dbcmd.CommandText = String.Format(
+		      "select foldername from download where photoid='{0}';", photoid);
+		  IDataReader reader = dbcmd.ExecuteReader();
+		  string foldername = "";
+		  if (reader.Read()) {
+		    foldername = reader.GetString(0);
+		  }
+		  return foldername;
+		  }
+		}
+		
+		/*
+		 * Upload table methods.
+		 */
+		public void InsertEntryToUpload(string filename) {
+		  if (IsUploadEntryExists(filename)) return;
+		  lock (_uploadlock) {
+		  string query = String.Format(
+		      "insert into upload (filename) values ('{0}');", filename);
+		  RunNonQuery(query);
+		  }
+		}
+		
+		public bool IsUploadEntryExists(string filename) {
+		  lock (_uploadlock) {
+		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
+		  dbcon.Open();
+		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  dbcmd.CommandText = String.Format(
+		      "select * from upload where filename='{0}';", filename);
+		  IDataReader reader = dbcmd.ExecuteReader();
+		  return reader.Read();
+		  }
+		}
+		
+		public void DeleteEntryFromUpload(string filename) {
+		  lock (_uploadlock) {
+		  string query = String.Format(
+		      "delete from upload where filename='{0}';", filename);
+		  RunNonQuery(query);
+		  }
+		}
+		
+		public ArrayList GetEntriesToUpload() {
+		  lock (_uploadlock) {
+		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
+		  dbcon.Open();
+		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  dbcmd.CommandText = "select * from upload;";
+		  IDataReader reader = dbcmd.ExecuteReader();
+		  ArrayList filenames = new ArrayList();
+		  while (reader.Read()) {
+		    filenames.Add(reader.GetString(0));
+		  }
+		  return filenames;
+		  }
 		}
 		
 		/*
@@ -838,6 +968,38 @@ using Mono.Data.SqliteClient;
 		  }
 		  set {
 		    client.Set(SECRET_TOKEN, value);
+		  }
+		}
+		
+		public string DownloadFoldername
+		{
+		  get {
+		    string foldername;
+		    try {
+		      foldername = (string) client.Get(DOWNLOAD_FOLDER);
+		    } catch (GConf.NoSuchKeyException) {
+		      foldername = "";
+		    }
+		    return foldername;
+		  }
+		  set {
+		    client.Set(DOWNLOAD_FOLDER, value);
+		  }
+		}
+		
+		public string UploadFilename
+		{
+		  get {
+		    string filename;
+		    try {
+		      filename = (string) client.Get(UPLOAD_FILE);
+		    } catch (GConf.NoSuchKeyException) {
+		      filename = "";
+		    }
+		    return filename;
+		  }
+		  set {
+		    client.Set(UPLOAD_FILE, value);
 		  }
 		}
 		

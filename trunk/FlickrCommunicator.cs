@@ -103,24 +103,35 @@ using FlickrNet;
 		  }
 		}
 		
+		/*
+		 * This method is the one which takes care of all the sync operations,
+		 * uploading and downloading of photos. Call it the master method,
+		 * everything else follows.
+		 */
 		public void RoutineCheck() {
 		  _isbusy = true;
-      UpdateUIAboutConnection();
-		  UpdateAlbums();
-		  foreach (Album a in PersistentInformation.GetInstance().GetAlbums()) {
-		    UpdatePhotosForAlbum(a);
-		    Gtk.Application.Invoke (delegate {
-		      DeskFlickrUI.GetInstance().RefreshLeftTreeView();
-		    });
-		  }
-		  // Sync photos at the end. It takes time for the changes done to server
-		  // to propagate. If we keep these sync methods before updates, then
-		  // the changes would be synced to server, however, the server would
-		  // respond back with the old ones to update methods. So, the application
-		  // would end up removing the changes, and only show them again at 
-		  // the next update.
-		  SyncDirtyPhotosToServer();
-		  SyncDirtyAlbumsToServer();
+		  try {
+        UpdateUIAboutConnection();
+  		  UpdateAlbums();
+  		  foreach (Album a in PersistentInformation.GetInstance().GetAlbums()) {
+  		    UpdatePhotosForAlbum(a);
+  		    Gtk.Application.Invoke (delegate {
+  		      DeskFlickrUI.GetInstance().RefreshLeftTreeView();
+  		    });
+  		  }
+  		  // Sync photos at the end. It takes time for the changes done to server
+  		  // to propagate. If we keep these sync methods before updates, then
+  		  // the changes would be synced to server, however, the server would
+  		  // respond back with the old ones to update methods. So, the application
+  		  // would end up removing the changes, and only show them again at 
+  		  // the next update.
+  		  SyncDirtyPhotosToServer();
+  		  SyncDirtyAlbumsToServer();
+  		  CheckPhotosToDownload();
+  		  CheckPhotosToUpload();
+  		} catch (Exception e) {
+  		  Console.WriteLine(e.StackTrace);
+  		}
 		  _isbusy = false;
 		  UpdateUIAboutConnection();
 		}
@@ -142,6 +153,25 @@ using FlickrNet;
 		    }
 		  }
 		  throw new Exception("FlickrCommunicator: GetInfo(photoid) unreachable code");
+		}
+		
+		private FlickrNet.Sizes SafelyGetSizes(string photoid) {
+		  FlickrNet.Sizes sizes = null;
+		  for (int i=0; i<MAXTRIES; i++) {
+		    try {
+		      sizes = flickrObj.PhotosGetSizes(photoid);
+		      return sizes;
+		    } catch(FlickrNet.FlickrException e) {
+		      // Maximum attempts over.
+		      if (i == MAXTRIES-1) {
+		        PrintException(e);
+		        if (e.Code == CODE_TIMEOUT) _isConnected = false;
+		        return null;
+		      }
+		      continue;
+		    }
+		  }
+		  throw new Exception("FlickrCommunicator: GetSizes(photoid) unreachable code");
 		}
 		
 		private Gdk.Pixbuf SafelyDownloadPhoto(string address) {
@@ -192,7 +222,7 @@ using FlickrNet;
         UpdateUIAboutConnection();
         return null;
       }
-      
+
 		  Photo photo = new Photo(photoid, pInfo.Title, pInfo.Description,
 		                          pInfo.License, pInfo.Visibility.IsPublic,
 		                          pInfo.Visibility.IsFriend, 
@@ -211,7 +241,7 @@ using FlickrNet;
 		    }
 		    photo.Thumbnail = buf;
 		  }
-		  
+
 		  // Step 3: Retrieve Small image.
 		  Gdk.Pixbuf smallimage = 
 		      PersistentInformation.GetInstance().GetSmallImage(photoid);
@@ -223,7 +253,10 @@ using FlickrNet;
 		    }
 		    photo.SmallImage = buf;
 		  }
-
+		  
+		  // Step 4: Retrieve tags. If no tags, then just return the photo.
+		  if (pInfo.Tags.TagCollection == null) return photo;
+		  // Otherwise, populate the tags, and then return the photo.
 		  ArrayList tags = new ArrayList();
 		  foreach (FlickrNet.PhotoInfoTag tag in pInfo.Tags.TagCollection) {
         tags.Add(tag.TagText);
@@ -430,5 +463,92 @@ using FlickrNet;
                                       Utils.GetDelimitedString(photoids, ","));
         PersistentInformation.GetInstance().SetAlbumDirty(album.SetId, false);
       }
+		}
+		
+		private void CheckPhotosToDownload() {
+		  ArrayList entries = PersistentInformation.GetInstance().GetEntriesToDownload();
+		  Gtk.Application.Invoke (delegate {
+		    DeskFlickrUI.GetInstance().SetStatusLabel("Downloading photos...");
+		    DeskFlickrUI.GetInstance().SetLimitsProgressBar(entries.Count);
+		  });
+		  foreach (PersistentInformation.DownloadEntry entry in entries) {
+		  	FlickrNet.Sizes photosizes = SafelyGetSizes(entry.photoid);
+		  	if (photosizes == null) continue;
+		  	Photo p = PersistentInformation.GetInstance().GetPhoto(entry.photoid);
+      	Gtk.Application.Invoke (delegate {
+      	  string label = String.Format(
+      	      "Downloading {0}... Saving to {1}", p.Title, entry.foldername);
+      	  DeskFlickrUI.GetInstance().SetStatusLabel(label);
+		    });
+
+		    Hashtable table = new Hashtable();
+		    foreach (FlickrNet.Size size in photosizes.SizeCollection) {
+		      table.Add(size.Label.ToLower(), size.Source);
+		    }
+		    string sourceurl;
+		    if (table.ContainsKey("original")) sourceurl = (string) table["original"];
+		    else if (table.ContainsKey("large")) sourceurl = (string) table["large"];
+		    else if (table.ContainsKey("medium")) sourceurl = (string) table["medium"];
+		    else {
+		      PersistentInformation.GetInstance().DeleteEntryFromDownload(entry);
+		      continue;
+		    }
+		    Console.WriteLine("Downloading: " + sourceurl);
+		    string safetitle = p.Title.Replace("/", "");
+		    string filename = String.Format(
+		          "{0}/{1}_{2}.jpg", entry.foldername, safetitle, p.Id);
+        Utils.IfExistsDeleteFile(filename);
+        try {
+		      webclient.DownloadFile(sourceurl, filename);
+		    } catch (Exception e) {
+		      Console.WriteLine(e.Message);
+		      continue;
+		    }
+      	Gtk.Application.Invoke (delegate {
+		      DeskFlickrUI.GetInstance().IncrementProgressBar(1);
+		    });
+		    PersistentInformation.GetInstance().DeleteEntryFromDownload(entry);
+		  }
+		}
+		
+		private void CheckPhotosToUpload() {
+		  ArrayList filenames = PersistentInformation.GetInstance().GetEntriesToUpload();
+		  Gtk.Application.Invoke (delegate {
+		    DeskFlickrUI.GetInstance().SetStatusLabel("Uploading photos...");
+		    DeskFlickrUI.GetInstance().SetLimitsProgressBar(filenames.Count);
+		  });
+		  foreach (string filename in filenames) {
+		    Console.WriteLine("Uploading file: " + filename);
+		    Gtk.Application.Invoke (delegate {
+		      DeskFlickrUI.GetInstance().SetStatusLabel("Uploading " + filename);
+		    });
+		    // Check if the file exists.
+		    System.IO.FileInfo finfo = new System.IO.FileInfo(filename);
+		    if (!finfo.Exists) continue;
+
+		    // Upload the photo now.
+		    //int lastindexofbackslash = filename.LastIndexOf("/");
+		    //int indexofdot = filename.IndexOf(".", lastindexofbackslash);
+		    //string title = filename.Substring(lastindexofbackslash, 
+		    //                                  lastindexofbackslash - indexofdot);
+		    // Set the title to photo name. Set the photo to private mode for now.
+		    // Add a tag "dfo" to uploaded photo.
+		    string photoid = flickrObj.UploadPicture(
+		        filename, finfo.Name, "Uploaded through Flickr Desktop Organizer",
+		        "dfo", false, false, false);
+		    if (photoid == null) continue;
+		    
+		    // The photo has been successfully uploaded.
+		    Gtk.Application.Invoke (delegate {
+		      DeskFlickrUI.GetInstance().IncrementProgressBar(1);
+		    });
+		    PersistentInformation.GetInstance().DeleteEntryFromUpload(filename);
+		    // Try if we can retrieve the photo information, this could be a bit
+		    // to early for the information to be spread out to the server
+		    // clusters. Keep our fingers crossed!
+		    Photo photo = RetrievePhoto(photoid);
+		    if (photo == null) continue;
+		    PersistentInformation.GetInstance().UpdatePhoto(photo);
+		  }
 		}
 	}

@@ -28,4 +28,25 @@ using System.Collections;
 		  }
 		  return tags;
 		}
+		
+    public static void EnsureDirectoryExists(string dir) {
+      System.IO.DirectoryInfo dirInfo = new System.IO.DirectoryInfo(dir);
+		  if (!dirInfo.Exists) {
+		    dirInfo.Create();
+		    Console.WriteLine("Created directory: " + dir);
+		  }
+    }
+    
+    public static bool FileNameExists(string filename) {
+      System.IO.FileInfo fileinfo = new System.IO.FileInfo(filename);
+      return fileinfo.Exists;
+    }
+    
+    public static void IfExistsDeleteFile(string filename) {
+      System.IO.FileInfo fileinfo = new System.IO.FileInfo(filename);
+      if (fileinfo.Exists) {
+        Console.WriteLine("File exists, deleting it: " + filename);
+        fileinfo.Delete();
+      }
+    }
 	}
