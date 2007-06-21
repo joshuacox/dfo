@@ -37,7 +37,7 @@ using Glade;
     Entry entry1;
     
     [Glade.Widget]
-    Entry entry2;
+    TextView textview5;
     
     [Glade.Widget]
     ComboBox combobox1;
@@ -90,7 +90,7 @@ using Glade;
 		  Glade.XML gxml = new Glade.XML (null, "organizer.glade", "window2", null);
 		  gxml.Autoconnect (this);
       _isconflictmode = conflictmode;
-      
+
 		  window2.Title = "Edit information for " + selectedphotos.Count + " photos";
 		  window2.SetIconFromFile(DeskFlickrUI.ICON_PATH);
 		  notebook1.SetTabLabelText(notebook1.CurrentPageWidget, "Information");
@@ -129,7 +129,7 @@ using Glade;
       button6.Clicked += new EventHandler(OnCancelButtonClick);
       
       entry1.Changed += new EventHandler(OnTitleChanged);
-      entry2.Changed += new EventHandler(OnDescChanged);
+      textview5.Buffer.Changed += new EventHandler(OnDescChanged);
       
       combobox1.Changed += new EventHandler(OnPrivacyChanged);
       combobox2.Changed += new EventHandler(OnLicenseChanged);
@@ -258,7 +258,7 @@ using Glade;
 		    tagschosen = Utils.GetIntersection(tagschosen, p.Tags);
 		  }
 		  entry1.Text = commonTitle;
-		  entry2.Text = commonDesc;
+		  textview5.Buffer.Text = commonDesc;
 		  
 		  _ignorechangedevent = true;
 		  {
@@ -299,7 +299,7 @@ using Glade;
 		
 		private void ShowInformationForPhoto(Photo p) {
 		  entry1.Text = p.Title;
-		  entry2.Text = p.Description;
+		  textview5.Buffer.Text = p.Description;
 		  
 		  _ignorechangedevent = true;
 		  {
@@ -402,17 +402,17 @@ using Glade;
 		}
 		
 		private void OnDescChanged(object o, EventArgs args) {
-		  if (!entry2.IsFocus) return;
+		  if (!textview5.IsFocus) return;
 
 		  if (checkbutton1.Active || !checkbutton1.Sensitive) {
 		    // Per photo
 		    Photo p = ((DeskFlickrUI.SelectedPhoto) _selectedphotos[_curphotoindex]).photo;
-		    p.Description = entry2.Text;
+		    p.Description = textview5.Buffer.Text;
 		  } else {
 		    // Group of photos
 		    foreach (DeskFlickrUI.SelectedPhoto sel in _selectedphotos) {
 		      Photo p = sel.photo;
-		      p.Description = entry2.Text;
+		      p.Description = textview5.Buffer.Text;
 		    }
 		  }
 		}

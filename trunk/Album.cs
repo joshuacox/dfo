@@ -17,6 +17,13 @@ using System;
 		  this.photoid = photoid;
 		}
 		
+		public Album(Album a) {
+		  this.setid = a.setid;
+		  this.title = a.title;
+		  this.desc = a.desc;
+		  this.photoid = a.photoid;
+		}
+		
 		public bool IsEqual(Album a) {
 		  if (this == a)
 		    return true;

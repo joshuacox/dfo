@@ -12,7 +12,6 @@ using System.Collections;
 		private int isfriend;
 		private int isfamily;
 		private string lastupdate;
-		// these are string tags, not from class Tag.
 		private ArrayList tags;
 		
 		public Photo(string id, string title, string desc, int license,
@@ -28,6 +27,21 @@ using System.Collections;
 		  this.isfamily = isfamily;
 		  this.lastupdate = lastupdate;
 		  this.tags = new ArrayList();
+		}
+		
+		public Photo(Photo src) {
+		  this.id = src.id;
+		  this.title = src.title;
+		  this.desc = src.desc;
+		  this.license = src.license;
+		  this.ispublic = src.ispublic;
+		  this.isfriend = src.isfriend;
+		  this.isfamily = src.isfamily;
+		  this.lastupdate = src.lastupdate;
+		  this.tags = new ArrayList();
+		  foreach (string t in src.tags) {
+		    this.tags.Add(t);
+		  }
 		}
 		
 		public string LastUpdate {
