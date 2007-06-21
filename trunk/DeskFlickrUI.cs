@@ -63,6 +63,7 @@ using Glade;
     
     ToggleToolButton streambutton;
     ToggleToolButton conflictbutton;
+    ToolButton syncbutton;
     
     public static string ICON_PATH = "icons/Font-Book.ico";
     public static string THUMBNAIL_PATH = "icons/FontBookThumbnail.png";
@@ -623,6 +624,13 @@ using Glade;
 		  conflictbutton.Clicked += new EventHandler(OnConflictButtonClicked);
 		  toolbar1.Insert(conflictbutton, -1);
 		  UpdateToolBarButtons();
+		  
+		  syncbutton = new ToolButton(Stock.SortAscending);
+		  syncbutton.IsImportant = true;
+		  syncbutton.Sensitive = true;
+		  syncbutton.Label = "Sync Now";
+		  syncbutton.Clicked += new EventHandler(ConnectionHandler);
+		  toolbar1.Insert(syncbutton, -1);
 		}
 		  	
   	public void UpdateToolBarButtons() {
@@ -718,10 +726,10 @@ using Glade;
   	private void SetMenuBar() {
       // Connect menu item.
       imagemenuitem2.Activated += new EventHandler(ConnectionHandler);
-      
+      // Work online/offline menu item.
+      checkmenuitem3.Activated += new EventHandler(OnWorkOfflineEvent);
       // Quit menu item.
       imagemenuitem5.Activated += new EventHandler(OnQuitEvent);
-      checkmenuitem3.Activated += new EventHandler(OnWorkOfflineEvent);
     }
     
 		private void OnQuitEvent (object sender, EventArgs args) {
@@ -756,24 +764,22 @@ using Glade;
   	  }
   	}
   	
+  	public void SetSensitivityConnectionButtons(bool issensitive) {
+  	  imagemenuitem2.Sensitive = issensitive;
+      checkmenuitem3.Sensitive = issensitive;
+      syncbutton.Sensitive = issensitive;
+    }
+    
   	private void OnWorkOfflineEvent(object sender, EventArgs args) {
   	  Console.WriteLine("Work offline status changed: " + IsWorkOffline);
   	  if (IsWorkOffline) { // Work OFF-line.
-  	    if (FlickrCommunicator.GetInstance().IsBusy) {
-  	      checkmenuitem3.Active = false;
-  	      MessageDialog md = new MessageDialog(
-  	          null, DialogFlags.DestroyWithParent, MessageType.Info,
-  	          ButtonsType.Close, "Connection busy... Please try again later.");
-  	      md.Run();
-  	      md.Destroy();
-  	      return;
-  	    }
   	    FlickrCommunicator.GetInstance().Disconnect();
   	    if (_connthread != null) _connthread.Abort();
   	    _connthread = null;
   	    SetStatusLabel("Done. Working Offline");
   	  } else { // Work ON-line.
-  	    if (_connthread != null) return;
+  	    if (_connthread != null) _connthread.Abort();
+  	    _connthread = null;
   	    ThreadStart job = new ThreadStart(PeriodicallyTryConnecting);
   	    _connthread = new Thread(job);
   	    _connthread.Start();
@@ -791,7 +797,7 @@ using Glade;
   	      Console.WriteLine("Already busy.. waiting for 5 mins");
   	      Thread.Sleep(5*60*1000); // wait for the connection to be finished.
   	    }
-  	    Gtk.Application.Invoke (delegate {
+  	    Gtk.Application.Invoke( delegate {
   	      SetStatusLabel("Attempting connection...");
   	    });
   	    comm.AttemptConnection();
@@ -813,9 +819,6 @@ using Glade;
   	private void ConnectionHandler(object sender, EventArgs e) {
   	  if (IsWorkOffline) {
   	    checkmenuitem3.Active = false;
-  	  }
-  	  if (FlickrCommunicator.GetInstance().IsConnected) {
-  	    return;
   	  }
       OnWorkOfflineEvent(null, null);
   	}

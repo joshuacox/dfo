@@ -76,6 +76,7 @@ using FlickrNet;
 		    if (_isConnected) status = 1;
 		    if (_isbusy) status = 2;
         DeskFlickrUI.GetInstance().SetIsConnected(status);
+        DeskFlickrUI.GetInstance().SetSensitivityConnectionButtons(!_isbusy);
       });
 		}
 		
