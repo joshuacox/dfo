@@ -112,6 +112,7 @@ using FlickrNet;
 		  _isbusy = true;
 		  try {
         UpdateUIAboutConnection();
+        UpdateStream();
   		  UpdateAlbums();
   		  foreach (Album a in PersistentInformation.GetInstance().GetAlbums()) {
   		    UpdatePhotosForAlbum(a);
@@ -129,6 +130,7 @@ using FlickrNet;
   		  SyncDirtyAlbumsToServer();
   		  CheckPhotosToDownload();
   		  CheckPhotosToUpload();
+  		  UpdateUploadStatus();
   		} catch (Exception e) {
   		  Console.WriteLine(e.StackTrace);
   		}
@@ -365,7 +367,7 @@ using FlickrNet;
 		    DeskFlickrUI.GetInstance().SetProgressBarText("");
 		  });
 		  // Step 1: Get list of photos.
-		  FlickrNet.Photo[] photos = SafelyGetPhotos(album);
+		  FlickrNet.PhotoCollection photos = SafelyGetPhotos(album);
 		  if (photos == null) {
 		    UpdateUIAboutConnection();
 		    return;
@@ -376,23 +378,60 @@ using FlickrNet;
 		  });
 		  
 		  // Step 2: Ensure we have the latest photos.
-		  foreach (FlickrNet.Photo p in photos) {
-		    if (PersistentInformation.GetInstance().
-		          HasLatestPhoto(p.PhotoId, p.lastupdate_raw)) {
-		      continue;
-		    }
-		    Photo photo = RetrievePhoto(p.PhotoId);
-		    PersistentInformation.GetInstance().UpdatePhoto(photo);
-		    Gtk.Application.Invoke (delegate {
-		      DeskFlickrUI.GetInstance().IncrementProgressBar(1);
-		    });
-		  }
+		  UpdatePhotos(photos);
 		  
 		  // Step 3: Link the photos to the set, in the database.
 		  PersistentInformation.GetInstance().DeleteAllPhotosFromAlbum(album.SetId);
 		  foreach (FlickrNet.Photo p in photos) {
 		    PersistentInformation.GetInstance().AddPhotoToAlbum(p.PhotoId, album.SetId);
 		  }
+		}
+		
+		private void UpdatePhotos(FlickrNet.PhotoCollection photos) {
+		  foreach (FlickrNet.Photo p in photos) {
+		  	Gtk.Application.Invoke (delegate {
+		      DeskFlickrUI.GetInstance().IncrementProgressBar(1);
+		    });
+		    if (PersistentInformation.GetInstance().
+		          HasLatestPhoto(p.PhotoId, p.lastupdate_raw)) {
+		      continue;
+		    }
+		    Photo photo = RetrievePhoto(p.PhotoId);
+		    PersistentInformation.GetInstance().UpdatePhoto(photo);
+		  }
+		}
+		
+		private void UpdateStream() {
+		  Gtk.Application.Invoke (delegate {
+		    DeskFlickrUI.GetInstance().SetStatusLabel("Updating photo stream...");
+        DeskFlickrUI.GetInstance().SetProgressBarText("");
+      });
+      
+		  FlickrNet.PhotoSearchOptions options = new PhotoSearchOptions();
+		  options.UserId = "me";
+		  options.Extras = PhotoSearchExtras.LastUpdated;
+		  options.PerPage = 500;
+		  options.Page = 1;
+		  Photos photos = flickrObj.PhotosSearch(options);
+		  Console.WriteLine("Got photos on page 1: " + photos.PhotoCollection.Count);
+		  Gtk.Application.Invoke (delegate {
+		    DeskFlickrUI.GetInstance().SetLimitsProgressBar((int) photos.TotalPhotos);
+		  });
+		  UpdatePhotos(photos.PhotoCollection);
+		  for (int curpage=2; curpage <= photos.TotalPages; curpage++) {
+		    options.Page = curpage;
+		    photos = flickrObj.PhotosSearch(options);
+		    Console.WriteLine("Got photos on page " + curpage + " : " + photos.PhotoCollection.Count);
+		    UpdatePhotos(photos.PhotoCollection);
+		  }
+		}
+		
+		private void UpdateUploadStatus() {
+		  FlickrNet.UserStatus userstatus = flickrObj.PeopleGetUploadStatus();
+		  Gtk.Application.Invoke(delegate {
+		    DeskFlickrUI.GetInstance().SetUploadStatus(
+		        userstatus.BandwidthMax, userstatus.BandwidthUsed);
+		  });
 		}
 		
 		private void SyncDirtyPhotosToServer() {
