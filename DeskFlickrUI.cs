@@ -195,11 +195,23 @@ using Glade;
         this._albums.Add(a);
       }
       treeview1.Model = albumStore;
-      if (treeiters.Count > 0) {
-        TreeIter curIter = (TreeIter) treeiters[leftcurselectedindex];
-        treeview1.Selection.SelectIter(curIter);
-      }
+      DoSelection(treeiters);
       treeview1.ShowAll();
+    }
+    
+    private void DoSelection(ArrayList treeiters) {
+      if (treeiters.Count > 0) {
+        // Scenario: There is only a single photo having a particular tag,
+        // which appears at the end of the tag list. The user removes the
+        // photo and the tag stops existing. Hence, the number of tag
+        // entries have fallen below the selected tag index.
+        if (leftcurselectedindex >= treeiters.Count) {
+          leftcurselectedindex = treeiters.Count - 1;
+        }
+        Console.WriteLine("leftcurselectedindex in doselection is: " + leftcurselectedindex);
+        TreeIter curiter = (TreeIter) treeiters[leftcurselectedindex];
+        treeview1.Selection.SelectIter(curiter);
+      }
     }
     
     private string GetInfoTag(string tag) {
@@ -214,6 +226,7 @@ using Glade;
     }
     
     public void PopulateTags() {
+      Console.WriteLine("Populate tags");
       Gtk.ListStore tagStore = (Gtk.ListStore) treeview1.Model;
       if (tagStore == null) {
         tagStore = new Gtk.ListStore(typeof(Gdk.Pixbuf), typeof(string));
@@ -225,16 +238,17 @@ using Glade;
       ArrayList treeiters = new ArrayList();
       foreach (string tag in PersistentInformation.GetInstance().GetAllTags()) {
         Photo p = PersistentInformation.GetInstance().GetSinglePhotoForTag(tag);
+        Console.WriteLine("p is: " + p + " for tag: " + tag);
+        if (p == null) Console.WriteLine("p is null ");
         TreeIter curiter = tagStore.AppendValues(p.Thumbnail, GetInfoTag(tag));
         treeiters.Add(curiter);
         // Now add the tag name to _tags.
         this._tags.Add(tag);
       }
       treeview1.Model = tagStore;
-      if (treeiters.Count > 0) {
-        TreeIter curIter = (TreeIter) treeiters[leftcurselectedindex];
-        treeview1.Selection.SelectIter(curIter);
-      }
+      Console.WriteLine("Doing selection : treeiters: " + treeiters.Count);
+      DoSelection(treeiters);
+      Console.WriteLine("Completed selection");
       treeview1.ShowAll();
     }
     
@@ -641,7 +655,9 @@ using Glade;
 		private void OnStreamButtonClicked(object o, EventArgs args) {
 		  if (streambutton.Active) {
 		    conflictbutton.Active = false;
-		    PopulatePhotosTreeView(PersistentInformation.GetInstance().GetAllPhotos());
+		    ArrayList photos = PersistentInformation.GetInstance().GetAllPhotos();
+		    streambutton.Label = "Show Stream (" + photos.Count + ")";
+		    PopulatePhotosTreeView(photos);
 		  } else {
 		    RefreshLeftTreeView();
 		  }
@@ -906,6 +922,17 @@ using Glade;
   	  } else { // Work ON-line.
   	    if (_connthread != null) _connthread.Abort();
   	    _connthread = null;
+  	    FlickrCommunicator comm = FlickrCommunicator.GetInstance();
+  	    // The communicator can't be busy, because the connection thread
+  	    // has been aborted.
+  	    Console.WriteLine("Ensuring that the application is authenticated.");
+  	    Gtk.Application.Invoke( delegate {
+  	      SetStatusLabel("Authenticating application...");
+  	    });
+  	    // If the token is not present, fire up the first time authentication
+  	    // GUI. The thread later makes sure that we do get the token.
+        if (!comm.IsTokenPresent()) FirstTimeAuthentication.FireUp();
+  	    
   	    ThreadStart job = new ThreadStart(PeriodicallyTryConnecting);
   	    _connthread = new Thread(job);
   	    _connthread.Start();
@@ -919,10 +946,15 @@ using Glade;
   	  if (IsWorkOffline) return;
   	  while (!IsWorkOffline) {
   	    FlickrCommunicator comm = FlickrCommunicator.GetInstance();
+  	    while (!comm.IsTokenPresent()) {
+  	      Thread.Sleep(6*1000); // 6 seconds.
+  	    }
+  	    // TODO: This particular part of the code would probably never be called.
   	    while (comm.IsBusy) {
   	      Console.WriteLine("Already busy.. waiting for 5 mins");
   	      Thread.Sleep(5*60*1000); // wait for the connection to be finished.
   	    }
+  	    Console.WriteLine("Attempting connection");
   	    Gtk.Application.Invoke( delegate {
   	      SetStatusLabel("Attempting connection...");
   	    });
@@ -930,11 +962,13 @@ using Glade;
   	    if (comm.IsConnected) comm.RoutineCheck();
   	    Gtk.Application.Invoke (delegate {
   	      UpdateToolBarButtons();
-  	      SetStatusLabel("Done. Counting time for reconnection...");
-  	      SetLimitsProgressBar(10);
+  	      string label = "Done.";
+  	      if (!comm.IsConnected) label = "Connection failed.";
+  	      SetStatusLabel(label + " Counting time for reconnection...");
+  	      SetLimitsProgressBar(100);
   	    });
-  	    for (int i=0; i<10; i++) {
-  	      Thread.Sleep(60*1000);
+  	    for (int i=0; i<100; i++) {
+  	      Thread.Sleep(6*1000); // 6 seconds
   	      Gtk.Application.Invoke (delegate {
   	        IncrementProgressBar(1);
   	      });
