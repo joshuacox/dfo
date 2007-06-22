@@ -1,10 +1,12 @@
 <?xml version="1.0"?>
 <UserCombinePreferences filename="/home/mann/DesktopFlickrOrganizer/DesktopFlickrOrganizer.mds">
   <Files>
+    <File filename="Welcome" />
     <File filename="./FlickrCommunicator.cs" />
     <File filename="./DeskFlickrUI.cs" />
     <File filename="./PersistentInformation.cs" />
     <File filename="./Utils.cs" />
+    <File filename="./Photo.cs" />
   </Files>
   <Views>
     <ViewMemento Id="MonoDevelop.Ide.Gui.Pads.ProjectPad">
@@ -19,9 +21,9 @@
     </ViewMemento>
     <ViewMemento Id="MonoDevelop.Ide.Gui.Pads.ClassPad">
       <TreeView>
-        <Node expanded="True" selected="True">
+        <Node expanded="True">
           <Node name="DesktopFlickrOrganizer" expanded="True">
-            <Node name="PersistentInformation" expanded="True" />
+            <Node name="DeskFlickrUI" expanded="True" />
           </Node>
         </Node>
       </TreeView>
