@@ -42,6 +42,7 @@ using Mono.Data.SqliteClient;
         + " isfriend integer,\n"
         + " isfamily integer,\n"
         + " lastupdate varchar(25) default '',\n"
+        + " lastsweep varchar(25) default '',\n"
         + " isdirty integer default 0\n"
         + ");";
     
@@ -182,6 +183,7 @@ using Mono.Data.SqliteClient;
 		}
 		
 		private void RunNonQuery(string query) {
+		  Console.WriteLine("Running: " + query);
 		  lock (_writelock) {
 		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
       dbcon.Open();
@@ -451,6 +453,36 @@ using Mono.Data.SqliteClient;
 		  }
 		}
 		
+		// These methods are utilized for a garbage collection like feature.
+		// All the photos sent back by the server are marked with the latest
+		// value of sweeep. The photos which haven't been swept in this round
+		// of updates, means that they have been removed from the server.
+		public void SetSweep(string photoid, string sweep) {
+		  lock (_photolock) {
+		  RunNonQuery(String.Format(
+		      "update photo set lastsweep='{0}' where id='{1}';", sweep, photoid));
+		  }
+		}
+		
+		public ArrayList GetPhotoIdsNotSwept(string sweep) {
+		  lock (_photolock) {
+		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
+      dbcon.Open();
+		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  dbcmd.CommandText = String.Format(
+		      "select id from photo where lastsweep!='{0}';", sweep);
+		  IDataReader reader = dbcmd.ExecuteReader();
+		  ArrayList photoids = new ArrayList();
+		  while(reader.Read()) {
+		    photoids.Add(reader.GetString(0));
+		  }
+		  reader.Close();
+		  dbcmd.Dispose();
+		  dbcon.Close();
+		  return photoids;
+		  }
+		}
+		
 		/*
 		 * Album retrieval and setting methods.
 		 */
@@ -660,8 +692,7 @@ using Mono.Data.SqliteClient;
       dbcon.Open();
 		  IDbCommand dbcmd = dbcon.CreateCommand();
 		  dbcmd.CommandText = String.Format(
-		      "select photoid from setphoto where setid='{0}' and isdeleted=0;",
-		      setid);
+		      "select photoid from setphoto where setid='{0}';", setid);
 		  IDataReader reader = dbcmd.ExecuteReader();
 		  while (reader.Read()) {
 		    photoids.Add(reader.GetString(0));
@@ -760,6 +791,8 @@ using Mono.Data.SqliteClient;
 		  ArrayList photoids = GetPhotoIdsForTag(tag);
 		  int index = rand.Next(photoids.Count);
 		  if (photoids.Count > 0) {
+		    Console.WriteLine("Getsinglephoto: " + (string) photoids[index] 
+		    + " index = " + index + " count: " + photoids.Count);
 		    return GetPhoto((string) photoids[index]);
 		  } else return null;
 		}

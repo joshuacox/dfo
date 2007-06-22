@@ -33,21 +33,23 @@ using FlickrNet;
 		  return comm;
 		}
 		
-    public void AttemptConnection() {
+		public bool IsTokenPresent() {
 		  string token = PersistentInformation.GetInstance().Token;
-		  if (token.Equals("")) {
-  		  try {
-  		    FirstTimeAuthentication auth = new FirstTimeAuthentication();
-          auth.ConnectToFlickr();
-          _isConnected = true;
-  		  } catch (FlickrNet.FlickrException e) {
-  		    Console.WriteLine(e.Code + " : " + e.Verbose);
-  		    _isConnected = false;
-  		  }
+		  return !token.Equals("");
+		}
+		
+    public void AttemptConnection() {
+    	string token = PersistentInformation.GetInstance().Token;
+		  try {
+		    flickrObj = new Flickr(_apikey, _secret, token);
+		    flickrObj.TestLogin();
+        _isConnected = true;
+		  } catch (FlickrNet.FlickrException e) {
+		    PrintException(e);
+		    _isConnected = false;
+		    return;
 		  }
-      else {
-        TestLogin();
-      }
+		  
       Gtk.Application.Invoke (delegate {
         if (_isConnected) {
           DeskFlickrUI.GetInstance().SetStatusLabel("Login Successful.");
@@ -82,19 +84,6 @@ using FlickrNet;
 		
 		private void PrintException(FlickrNet.FlickrException e) {
 		  Console.WriteLine(e.Code + " : " + e.Verbose);
-		}
-		
-		public void TestLogin() {
-		  string token = PersistentInformation.GetInstance().Token;
-		  try {
-		    flickrObj = new Flickr(_apikey, _secret, token);
-		    flickrObj.TestLogin();
-        _isConnected = true;
-		  } catch (FlickrNet.FlickrException e) {
-		    PrintException(e);
-		    _isConnected = false;
-		    return;
-		  }
 		}
 		
 		public bool IsBusy {
@@ -145,11 +134,14 @@ using FlickrNet;
 		      pInfo = flickrObj.PhotosGetInfo(photoid);
 		      return pInfo;
 		    } catch(FlickrNet.FlickrException e) {
+		      if (e.Code == 1) return null; // Photo not found.
 		      // Maximum attempts over.
 		      if (i == MAXTRIES-1) {
 		        PrintException(e);
-		        if (e.Code == CODE_TIMEOUT) _isConnected = false;
-		        return null;
+		        if (e.Code == CODE_TIMEOUT) {
+		        _isConnected = false;
+		        throw e;
+		        }
 		      }
 		      continue;
 		    }
@@ -305,7 +297,11 @@ using FlickrNet;
 		      return;
 		    }
 		    PersistentInformation.GetInstance().UpdateAlbum(album);
+		    // Well the photo should just have been updated by UpdateStream()
+		    // method, but heck! this is just one photo. Just leave this method
+		    // here for now, may be useful in some "impossible" kinda situation.
         PersistentInformation.GetInstance().UpdatePhoto(p);
+        
         // Make sure not to overwrite any of user specified changes,
         // when doing updates, namely the isdirty=1 rows.
         PersistentInformation.GetInstance().AddPhotoToAlbum(p.Id, album.SetId);
@@ -378,26 +374,33 @@ using FlickrNet;
 		  });
 		  
 		  // Step 2: Ensure we have the latest photos.
-		  UpdatePhotos(photos);
+		  // UpdatePhotos(photos);
+		  // Afterthought: this step is not needed, as we're already updating the
+		  // photos in stream.
+		  // TODO: Remove this section of code, once we've stabilized this fact.
 		  
 		  // Step 3: Link the photos to the set, in the database.
 		  PersistentInformation.GetInstance().DeleteAllPhotosFromAlbum(album.SetId);
 		  foreach (FlickrNet.Photo p in photos) {
+		    if (!PersistentInformation.GetInstance().HasPhoto(p.PhotoId)) continue;
 		    PersistentInformation.GetInstance().AddPhotoToAlbum(p.PhotoId, album.SetId);
 		  }
 		}
 		
-		private void UpdatePhotos(FlickrNet.PhotoCollection photos) {
+		private void UpdatePhotos(FlickrNet.PhotoCollection photos, string sweep) {
 		  foreach (FlickrNet.Photo p in photos) {
 		  	Gtk.Application.Invoke (delegate {
 		      DeskFlickrUI.GetInstance().IncrementProgressBar(1);
 		    });
-		    if (PersistentInformation.GetInstance().
-		          HasLatestPhoto(p.PhotoId, p.lastupdate_raw)) {
-		      continue;
+		    // Set the sweep value, which says that the photo is present
+		    // on the server.
+		    if (!PersistentInformation.GetInstance().HasLatestPhoto(
+		            p.PhotoId, p.lastupdate_raw)) {
+		      Photo photo = RetrievePhoto(p.PhotoId);
+		      if (photo == null) continue;
+		      PersistentInformation.GetInstance().UpdatePhoto(photo);
 		    }
-		    Photo photo = RetrievePhoto(p.PhotoId);
-		    PersistentInformation.GetInstance().UpdatePhoto(photo);
+		    PersistentInformation.GetInstance().SetSweep(p.PhotoId, sweep);
 		  }
 		}
 		
@@ -406,7 +409,8 @@ using FlickrNet;
 		    DeskFlickrUI.GetInstance().SetStatusLabel("Updating photo stream...");
         DeskFlickrUI.GetInstance().SetProgressBarText("");
       });
-      
+      string sweep = DateTime.Now.Ticks.ToString();
+      Console.WriteLine("sweep value is: " + sweep);
 		  FlickrNet.PhotoSearchOptions options = new PhotoSearchOptions();
 		  options.UserId = "me";
 		  options.Extras = PhotoSearchExtras.LastUpdated;
@@ -417,12 +421,20 @@ using FlickrNet;
 		  Gtk.Application.Invoke (delegate {
 		    DeskFlickrUI.GetInstance().SetLimitsProgressBar((int) photos.TotalPhotos);
 		  });
-		  UpdatePhotos(photos.PhotoCollection);
+		  
+		  UpdatePhotos(photos.PhotoCollection, sweep);
 		  for (int curpage=2; curpage <= photos.TotalPages; curpage++) {
 		    options.Page = curpage;
 		    photos = flickrObj.PhotosSearch(options);
 		    Console.WriteLine("Got photos on page " + curpage + " : " + photos.PhotoCollection.Count);
-		    UpdatePhotos(photos.PhotoCollection);
+		    UpdatePhotos(photos.PhotoCollection, sweep);
+		  }
+		  // Delete the photos whose sweep value is not the latest one, i.e.
+		  // they are not present on the server.
+		  foreach (string photoid in 
+		      PersistentInformation.GetInstance().GetPhotoIdsNotSwept(sweep)) {
+		    PersistentInformation.GetInstance().DeleteAllTags(photoid);
+		    PersistentInformation.GetInstance().DeletePhoto(photoid);
 		  }
 		}
 		
@@ -550,26 +562,31 @@ using FlickrNet;
 		  }
 		}
 		
+		// Tried to use OnUploadProgress event handler provided, but it proved
+		// to be no good use. The bytes uploaded would reach the file size in
+		// no time, but then it would take long to finish the upload. Maybe its
+		// practically just tracking the bytes "read", rather than "uploaded".
 		private void CheckPhotosToUpload() {
 		  ArrayList filenames = PersistentInformation.GetInstance().GetEntriesToUpload();
+		  
 		  Gtk.Application.Invoke (delegate {
 		    DeskFlickrUI.GetInstance().SetStatusLabel("Uploading photos...");
 		    DeskFlickrUI.GetInstance().SetLimitsProgressBar(filenames.Count);
 		  });
+		  
 		  foreach (string filename in filenames) {
 		    Console.WriteLine("Uploading file: " + filename);
-		    Gtk.Application.Invoke (delegate {
-		      DeskFlickrUI.GetInstance().SetStatusLabel("Uploading " + filename);
-		    });
+		    
 		    // Check if the file exists.
 		    System.IO.FileInfo finfo = new System.IO.FileInfo(filename);
 		    if (!finfo.Exists) continue;
 
+		    Gtk.Application.Invoke (delegate {
+		      DeskFlickrUI.GetInstance().SetStatusLabel(
+		          String.Format("Uploading file {0}", filename));
+		    });
+
 		    // Upload the photo now.
-		    //int lastindexofbackslash = filename.LastIndexOf("/");
-		    //int indexofdot = filename.IndexOf(".", lastindexofbackslash);
-		    //string title = filename.Substring(lastindexofbackslash, 
-		    //                                  lastindexofbackslash - indexofdot);
 		    // Set the title to photo name. Set the photo to private mode for now.
 		    // Add a tag "dfo" to uploaded photo.
 		    string photoid = flickrObj.UploadPicture(
@@ -581,6 +598,7 @@ using FlickrNet;
 		    Gtk.Application.Invoke (delegate {
 		      DeskFlickrUI.GetInstance().IncrementProgressBar(1);
 		    });
+		  
 		    PersistentInformation.GetInstance().DeleteEntryFromUpload(filename);
 		    // Try if we can retrieve the photo information, this could be a bit
 		    // to early for the information to be spread out to the server

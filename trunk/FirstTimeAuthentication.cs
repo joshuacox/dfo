@@ -34,12 +34,12 @@ using FlickrNet;
 		private string _apikey = "413051629a00e140b4f448fd22d715d2";
     private string _secret = "9aa8b5eef280f665";
     
-		public FirstTimeAuthentication()
+		private FirstTimeAuthentication()
 		{
       Glade.XML gxml = new Glade.XML (null, "organizer.glade", "dialog1", null);
 		  gxml.Autoconnect (this);
 		  
-		  textview1.Buffer.Text = "The application needs to be authorization"
+		  textview1.Buffer.Text = "The application needs to be authorized"
 		      + " before it can read or modify your photos and data on Flickr."
 		      + " Authorization is a simple process which takes place in web"
 		      + " browser. When you're finished, return to this window to"
@@ -56,25 +56,29 @@ using FlickrNet;
 
 		  dialog1.SetIconFromFile(DeskFlickrUI.ICON_PATH);
 		  dialog1.ShowAll();
+		  ConnectToFlickr();
 		  Console.WriteLine("Should show up the new gui now.");
 		}
 		
-		public void OnButtonPressDone(object sender, EventArgs e) {
+		public static void FireUp() {
+		  new FirstTimeAuthentication();
+		}
+		
+		private void OnButtonPressDone(object sender, EventArgs e) {
 		  Auth auth = this.flickrObj.AuthGetToken(frob);
 		  string token = auth.Token;
 		  PersistentInformation.GetInstance().Token = token;
 		  Console.WriteLine("Set the token in gconf.");
 		  dialog1.Destroy();
-      FlickrCommunicator.GetInstance().TestLogin();
 		}
 		
-		public void OnButtonPressMoreInfo(object sender, EventArgs e) {
+		private void OnButtonPressMoreInfo(object sender, EventArgs e) {
 		  string moreInfoUrl = 
 		      "http://www.flickr.com/services/api/auth.howto.desktop.html";
 		  System.Diagnostics.Process.Start(moreInfoUrl);
 		}
 		
-		public void ConnectToFlickr() {
+		private void ConnectToFlickr() {
 		  Console.WriteLine("Inside connect to flickr.");
 
 		  this.flickrObj = new Flickr(this._apikey, this._secret);
