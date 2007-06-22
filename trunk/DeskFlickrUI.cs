@@ -26,6 +26,9 @@ using Glade;
     ImageMenuItem imagemenuitem5;
     
     [Glade.Widget]
+    MenuItem menuitem2;
+    
+    [Glade.Widget]
     TreeView treeview1;
     
     [Glade.Widget]
@@ -599,6 +602,7 @@ using Glade;
           "Select a folder", null, FileChooserAction.SelectFolder,
           Stock.Open, ResponseType.Ok, Stock.Cancel, ResponseType.Cancel);
       
+      chooser.SetIconFromFile(DeskFlickrUI.ICON_PATH);
       chooser.SetFilename(PersistentInformation.GetInstance().DownloadFoldername);
       ResponseType choice = (ResponseType) chooser.Run();
       string foldername = "";
@@ -658,6 +662,8 @@ using Glade;
 		  FileChooserDialog chooser = new FileChooserDialog(
           "Select images to upload", null, FileChooserAction.Open,
           Stock.Open, ResponseType.Ok, Stock.Cancel, ResponseType.Cancel);
+      
+      chooser.SetIconFromFile(DeskFlickrUI.ICON_PATH);
       chooser.SetFilename(PersistentInformation.GetInstance().UploadFilename);
       chooser.SelectMultiple = true;
       ResponseType choice = (ResponseType) chooser.Run();
@@ -828,6 +834,8 @@ using Glade;
       checkmenuitem3.Activated += new EventHandler(OnWorkOfflineEvent);
       // Quit menu item.
       imagemenuitem5.Activated += new EventHandler(OnQuitEvent);
+      // About button.
+      menuitem2.Activated += new EventHandler(OnAboutButtonClicked);
     }
     
 		private void OnQuitEvent (object sender, EventArgs args) {
@@ -854,6 +862,10 @@ using Glade;
   	private void OnWindowDeleteEvent (object sender, DeleteEventArgs args) {
   	  OnQuitEvent(null, null);
   		args.RetVal = true;
+  	}
+  	
+  	private void OnAboutButtonClicked(object o, EventArgs args) {
+  	  AboutUI.FireUp();
   	}
   	
   	private bool IsWorkOffline {
