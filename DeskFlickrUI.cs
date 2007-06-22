@@ -17,6 +17,9 @@ using Glade;
     ProgressBar progressbar1;
     
     [Glade.Widget]
+    ProgressBar progressbar2;
+    
+    [Glade.Widget]
     ImageMenuItem imagemenuitem2;
     
     [Glade.Widget]
@@ -149,6 +152,7 @@ using Glade;
 		  SetFlamesWindow();
 		  
 		  SetIsConnected(0);
+		  progressbar2.Text = "Upload Status";
 		  // Set window properties
 		  window1.SetIconFromFile(ICON_PATH);
 		  window1.DeleteEvent += OnWindowDeleteEvent;
@@ -466,8 +470,9 @@ using Glade;
       return (Photo) _photos[childpath.Indices[0]];
     }
     
-    private void ReplacePhoto(TreePath path, Photo p) {
-      TreePath childpath = filter.ConvertPathToChildPath(path);
+    // This method takes absolute (child) path. So, there's no need to
+    // convert it.
+    private void ReplacePhoto(TreePath childpath, Photo p) {
       _photos.RemoveAt(childpath.Indices[0]);
       _photos.Insert(childpath.Indices[0], p);
     }
@@ -706,6 +711,13 @@ using Glade;
 		  downloadbutton.Clicked += new EventHandler(OnDownloadButtonClicked);
 		  toolbar1.Insert(downloadbutton, -1);
 		  
+		  ToolButton uploadbutton = new ToolButton(Stock.SortAscending);
+		  uploadbutton.IsImportant = true;
+		  uploadbutton.Sensitive = true;
+		  uploadbutton.Label = "Upload Photos";
+		  uploadbutton.Clicked += new EventHandler(OnUploadButtonClicked);
+		  toolbar1.Insert(uploadbutton, -1);
+		  
 		  streambutton = new ToggleToolButton(Stock.SelectAll);
 		  streambutton.IsImportant = true;
 		  streambutton.Sensitive = true;
@@ -727,13 +739,6 @@ using Glade;
 		  syncbutton.Label = "Sync Now";
 		  syncbutton.Clicked += new EventHandler(ConnectionHandler);
 		  toolbar1.Insert(syncbutton, -1);
-		  
-		  ToolButton uploadbutton = new ToolButton(Stock.SortAscending);
-		  uploadbutton.IsImportant = true;
-		  uploadbutton.Sensitive = true;
-		  uploadbutton.Label = "Upload Photos";
-		  uploadbutton.Clicked += new EventHandler(OnUploadButtonClicked);
-		  toolbar1.Insert(uploadbutton, -1);
 		}
 		  	
   	public void UpdateToolBarButtons() {
@@ -789,6 +794,14 @@ using Glade;
 		
 		public void ShowAllInWindow() {
 		  window1.ShowAll();
+		}
+		
+		public void SetUploadStatus(long max, long val) {
+		  progressbar2.Adjustment.Lower = 0;
+		  progressbar2.Adjustment.Upper = max;
+		  progressbar2.Adjustment.Value = val;
+		  int percentage = (int) ((val*100)/max);
+		  progressbar2.Text = percentage + " % used";
 		}
 		
 		public void SetLimitsProgressBar(int max) {
