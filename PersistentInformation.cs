@@ -42,7 +42,10 @@ using Mono.Data.SqliteClient;
         + " isfriend integer,\n"
         + " isfamily integer,\n"
         + " lastupdate varchar(25) default '',\n"
+        // Entries after this, can be ordered in any way. They're not
+        // being read by select all.
         + " lastsweep varchar(25) default '',\n"
+        + " isdeleted integer default 0,\n"
         + " isdirty integer default 0\n"
         + ");";
     
@@ -102,6 +105,7 @@ using Mono.Data.SqliteClient;
       if (CreateTable(CREATE_PHOTO_TABLE)) {
         AddIndex("create index iphoto1 on photo(id);");
         AddIndex("create index iphoto2 on photo(isdirty);");
+        AddIndex("create index iphoto3 on photo(isdeleted);");
       }
       if (CreateTable(CREATE_ALBUM_TABLE)) {
         AddIndex("create index ialbum1 on album(setid);");
@@ -276,7 +280,7 @@ using Mono.Data.SqliteClient;
 		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
 		  dbcon.Open();
 		  IDbCommand dbcmd = dbcon.CreateCommand();
-		  dbcmd.CommandText = "select count(id) from photo;";
+		  dbcmd.CommandText = "select count(id) from photo where isdeleted=0;";
 		  IDataReader reader = dbcmd.ExecuteReader();
 		  int count = 0;
 		  if (reader.Read()) {
@@ -294,7 +298,7 @@ using Mono.Data.SqliteClient;
 		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
       dbcon.Open();
 		  IDbCommand dbcmd = dbcon.CreateCommand();
-		  dbcmd.CommandText = "select * from photo;";
+		  dbcmd.CommandText = "select * from photo where isdeleted=0 order by lastupdate desc;";
 		  IDataReader reader = dbcmd.ExecuteReader();
 		  ArrayList photos = new ArrayList();
 		  while(reader.Read()) {
@@ -421,6 +425,7 @@ using Mono.Data.SqliteClient;
 		  }
 		}
 		
+		// This method also deletes the tags associated with the photo.
 		// This method doesn't delete the photo from album. The reason is
 		// that insertion and deletion of photo is independent of its
 		// inclusion in certain sets.
@@ -436,6 +441,10 @@ using Mono.Data.SqliteClient;
 		
 		// This method is mainly meant to be used for updating of photos
 		// done by FlickrCommunicator; during the periodic online checks.
+		// The method updates the latest copy of the photo in the database,
+		// except in the case when photo has been updated both at flickr server
+		// and in the application; in which case, it temporarily stores the
+		// server copy in-memory, and shows it up as a conflict.
 		public void UpdatePhoto(Photo src) {
 		  if (!HasPhoto(src.Id)) {
 		    InsertPhoto(src);
@@ -471,6 +480,32 @@ using Mono.Data.SqliteClient;
 		  IDbCommand dbcmd = dbcon.CreateCommand();
 		  dbcmd.CommandText = String.Format(
 		      "select id from photo where lastsweep!='{0}';", sweep);
+		  IDataReader reader = dbcmd.ExecuteReader();
+		  ArrayList photoids = new ArrayList();
+		  while(reader.Read()) {
+		    photoids.Add(reader.GetString(0));
+		  }
+		  reader.Close();
+		  dbcmd.Dispose();
+		  dbcon.Close();
+		  return photoids;
+		  }
+		}
+		
+		// This method would set the deleted bit of photo.
+		public void SetPhotoForDeletion(string photoid) {
+		  lock (_photolock) {
+		  RunNonQuery(String.Format(
+		      "update photo set isdeleted=1 where id='{0}';", photoid));
+		  }
+		}
+		
+		public ArrayList GetPhotoIdsDeleted() {
+		  lock (_photolock) {
+		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
+      dbcon.Open();
+		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  dbcmd.CommandText = "select id from photo where isdeleted=1;";
 		  IDataReader reader = dbcmd.ExecuteReader();
 		  ArrayList photoids = new ArrayList();
 		  while(reader.Read()) {
@@ -676,6 +711,13 @@ using Mono.Data.SqliteClient;
 		  RunNonQuery(String.Format(
 		      "delete from setphoto where setid='{0}' and photoid='{1}';",
 		      setid, photoid));
+		  }
+		}
+		
+		public void DeletePhotoFromAllAlbums(string photoid) {
+		  lock (_setphotolock) {
+		  RunNonQuery(String.Format(
+		      "delete from setphoto where photoid='{0}';", photoid));
 		  }
 		}
 

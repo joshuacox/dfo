@@ -82,6 +82,12 @@ using FlickrNet;
       });
 		}
 		
+		private void DelegateIncrementProgressBar() {
+		  Gtk.Application.Invoke (delegate {
+		    DeskFlickrUI.GetInstance().IncrementProgressBar(1);
+		  });
+		}
+		
 		private void PrintException(FlickrNet.FlickrException e) {
 		  Console.WriteLine(e.Code + " : " + e.Verbose);
 		}
@@ -120,6 +126,11 @@ using FlickrNet;
   		  CheckPhotosToDownload();
   		  CheckPhotosToUpload();
   		  UpdateUploadStatus();
+  		  // Flickr server never catches up with updates soon. So, we'll 
+  		  // do all the album updates required by photo deletion on our side, 
+  		  // and then just flush them to server. Hope they spread around by 
+  		  // the next time this routine runs.
+        CheckPhotosToDelete();
   		} catch (Exception e) {
   		  Console.WriteLine(e.StackTrace);
   		}
@@ -279,9 +290,7 @@ using FlickrNet;
       ArrayList setids = new ArrayList();
       // Iterate through the sets, and retrieve their primary photos.
 		  foreach (Photoset s in sets) {
-		    Gtk.Application.Invoke (delegate {
-		      DeskFlickrUI.GetInstance().IncrementProgressBar(1);
-		    });
+        DelegateIncrementProgressBar();
 		    setids.Add(s.PhotosetId);
 		    // Skip the checkings, if the album is dirty.
 		    if (PersistentInformation.GetInstance().IsAlbumDirty(s.PhotosetId)) 
@@ -349,6 +358,21 @@ using FlickrNet;
 		  throw new Exception("FlickrCommunicator: SafelyGetPhotos: unreachable code");
 		}
 		
+		public void SafelyDeletePhotoFromServer(string photoid) {
+		  for (int i=0; i<MAXTRIES; i++) {
+		    try {
+		      flickrObj.PhotosDelete(photoid);
+		    } catch(FlickrNet.FlickrException e) {
+		      // Maximum attempts over.
+		      if (i == MAXTRIES-1) {
+		        PrintException(e);
+            if (e.Code == CODE_TIMEOUT) _isConnected = false;
+		      }
+		      continue;
+		    }
+		  }
+		}
+		
 		private void UpdatePhotosForAlbum(Album album) {
 		  // Don't update photos if the album is dirty, we need to flush our
 		  // changes first.
@@ -389,9 +413,7 @@ using FlickrNet;
 		
 		private void UpdatePhotos(FlickrNet.PhotoCollection photos, string sweep) {
 		  foreach (FlickrNet.Photo p in photos) {
-		  	Gtk.Application.Invoke (delegate {
-		      DeskFlickrUI.GetInstance().IncrementProgressBar(1);
-		    });
+        DelegateIncrementProgressBar();
 		    // Set the sweep value, which says that the photo is present
 		    // on the server.
 		    if (!PersistentInformation.GetInstance().HasLatestPhoto(
@@ -433,7 +455,7 @@ using FlickrNet;
 		  // they are not present on the server.
 		  foreach (string photoid in 
 		      PersistentInformation.GetInstance().GetPhotoIdsNotSwept(sweep)) {
-		    PersistentInformation.GetInstance().DeleteAllTags(photoid);
+		    // DeletePhoto method takes care of deleting the tags as well.
 		    PersistentInformation.GetInstance().DeletePhoto(photoid);
 		  }
 		}
@@ -455,9 +477,7 @@ using FlickrNet;
       });
 		  foreach (Photo photo in photos) {
 		    Console.WriteLine("syncing photo: " + photo.Title);
-		    Gtk.Application.Invoke (delegate {
-		      DeskFlickrUI.GetInstance().IncrementProgressBar(1);
-		    });
+        DelegateIncrementProgressBar();
 		    Photo serverphoto = RetrievePhoto(photo.Id);
 		    bool ismodified = !serverphoto.LastUpdate.Equals(photo.LastUpdate);
 		    if (ismodified) {
@@ -503,9 +523,7 @@ using FlickrNet;
       });
       foreach (Album album  in albums) {
         Console.WriteLine("Syncing album: " + album.Title);
-      	Gtk.Application.Invoke (delegate {
-		      DeskFlickrUI.GetInstance().IncrementProgressBar(1);
-		    });
+        DelegateIncrementProgressBar();
         flickrObj.PhotosetsEditMeta(album.SetId, album.Title, album.Desc);
         // Sync the primary photo id of the set.
         ArrayList photoids = 
@@ -555,9 +573,7 @@ using FlickrNet;
 		      Console.WriteLine(e.Message);
 		      continue;
 		    }
-      	Gtk.Application.Invoke (delegate {
-		      DeskFlickrUI.GetInstance().IncrementProgressBar(1);
-		    });
+        DelegateIncrementProgressBar();
 		    PersistentInformation.GetInstance().DeleteEntryFromDownload(entry);
 		  }
 		}
@@ -595,9 +611,7 @@ using FlickrNet;
 		    if (photoid == null) continue;
 		    
 		    // The photo has been successfully uploaded.
-		    Gtk.Application.Invoke (delegate {
-		      DeskFlickrUI.GetInstance().IncrementProgressBar(1);
-		    });
+        DelegateIncrementProgressBar();
 		  
 		    PersistentInformation.GetInstance().DeleteEntryFromUpload(filename);
 		    // Try if we can retrieve the photo information, this could be a bit
@@ -606,6 +620,20 @@ using FlickrNet;
 		    Photo photo = RetrievePhoto(photoid);
 		    if (photo == null) continue;
 		    PersistentInformation.GetInstance().UpdatePhoto(photo);
+		  }
+		}
+		
+		private void CheckPhotosToDelete() {
+		  ArrayList photoids = PersistentInformation.GetInstance().GetPhotoIdsDeleted();
+			Gtk.Application.Invoke (delegate {
+		    DeskFlickrUI.GetInstance().SetStatusLabel("Deleting photos...");
+		    DeskFlickrUI.GetInstance().SetLimitsProgressBar(photoids.Count);
+		  });
+		  foreach (String photoid in photoids) {
+		    Console.WriteLine("Deleting photo: " + photoid);
+		    SafelyDeletePhotoFromServer(photoid);
+		    PersistentInformation.GetInstance().DeletePhoto(photoid);
+        DelegateIncrementProgressBar();
 		  }
 		}
 	}
