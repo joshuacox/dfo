@@ -171,6 +171,7 @@ using Glade;
 	  }
 	  
     public void PopulateAlbums() {
+      UpdateFlameWindowLabel();
       Gtk.ListStore albumStore = (Gtk.ListStore) treeview1.Model;
       if (albumStore == null) {
         albumStore = new Gtk.ListStore(typeof(Gdk.Pixbuf), typeof(string));
@@ -226,7 +227,7 @@ using Glade;
     }
     
     public void PopulateTags() {
-      Console.WriteLine("Populate tags");
+      UpdateFlameWindowLabel();
       Gtk.ListStore tagStore = (Gtk.ListStore) treeview1.Model;
       if (tagStore == null) {
         tagStore = new Gtk.ListStore(typeof(Gdk.Pixbuf), typeof(string));
@@ -312,27 +313,27 @@ using Glade;
 		      bool exists = PersistentInformation.GetInstance()
 		          .HasAlbumPhoto(photoid, setid);
 		      if (exists) {
+		        TreePath setselectedpath = treeview1.Selection.GetSelectedRows()[0];
             if (!streambutton.Active && !conflictbutton.Active
-		            && treeview2.Selection.GetSelectedRows().Length == 1){
-	          // Scenario: The user is viewing the set, and decides to
-	          // change the primary photo. He can do so by dragging the photo
-	          // from the respective set, to the set itself. However, make
-	          // sure that only one photo is selected.
-              TreePath setselectedpath = treeview1.Selection.GetSelectedRows()[0];
-              if (setselectedpath.Indices[0] == destindex) {
-                // The album selected is the same as the album the photo is
-                // dragged on.
-	              PersistentInformation.GetInstance().SetPrimaryPhotoForAlbum(setid, photoid);
-	              PersistentInformation.GetInstance().SetAlbumDirty(setid, true);
-	            }
+		            && treeview2.Selection.GetSelectedRows().Length == 1
+		            && setselectedpath.Indices[0] == destindex){
+	            // Scenario: The user is viewing the set, and decides to
+	            // change the primary photo. He can do so by dragging the photo
+	            // from the respective set, to the set itself. However, make
+	            // sure that only one photo is selected.
+              // The album selected is the same as the album the photo is
+              // dragged on.
+	            PersistentInformation.GetInstance().SetPrimaryPhotoForAlbum(setid, photoid);
+	            PersistentInformation.GetInstance().SetAlbumDirty(setid, true);
+	            PopulateAlbums();
 		        }
 		      } else { // The photo isn't present in set.
 		        PersistentInformation.GetInstance().AddPhotoToAlbum(photoid, setid);
 		        PersistentInformation.GetInstance().SetAlbumDirty(setid, true);
+		        UpdateAlbumAtPath(path, (Album) _albums[destindex]);
 		      }
 		    }
-		    UpdateAlbumAtPath(path, (Album) _albums[destindex]);
-		  } 
+		  }
 		  else if (selectedtab == 1) { // tags
 		    foreach (TreePath tp in treeview2.Selection.GetSelectedRows()) {
 		      string photoid = ((Photo) _photos[tp.Indices[0]]).Id;
@@ -484,13 +485,6 @@ using Glade;
       return (Photo) _photos[childpath.Indices[0]];
     }
     
-    // This method takes absolute (child) path. So, there's no need to
-    // convert it.
-    private void ReplacePhoto(TreePath childpath, Photo p) {
-      _photos.RemoveAt(childpath.Indices[0]);
-      _photos.Insert(childpath.Indices[0], p);
-    }
-    
     private void OnFilterEntryChanged(object o, EventArgs args) {
       filter.Refilter();
     }
@@ -527,10 +521,12 @@ using Glade;
 
     public void UpdatePhotos(ArrayList selectedphotos) {
       foreach (SelectedPhoto sel in selectedphotos) {
-        TreePath path = new TreePath(sel.path);
-        ReplacePhoto(path, sel.photo);
+        // SelectedPhoto stores childpath.
+        TreePath childpath = new TreePath(sel.path);
+        _photos.RemoveAt(childpath.Indices[0]);
+        _photos.Insert(childpath.Indices[0], sel.photo);
         TreeIter iter;
-        photoStore.GetIter(out iter, path);
+        photoStore.GetIter(out iter, childpath);
         photoStore.SetValue(iter, 1, GetCol1Data(sel.photo));
         photoStore.SetValue(iter, 2, GetCol2Data(sel.photo));
         photoStore.SetValue(iter, 3, GetCol3Data(sel.photo));
@@ -661,6 +657,7 @@ using Glade;
 		  } else {
 		    RefreshLeftTreeView();
 		  }
+		  if (streambutton.Active) UpdateFlameWindowLabel();
 		}
 		
 		private void OnConflictButtonClicked(object o, EventArgs args) {
@@ -677,6 +674,7 @@ using Glade;
 		  } else {
 		    RefreshLeftTreeView();
 		  }
+		  if (conflictbutton.Active) UpdateFlameWindowLabel();
 		}
 		
 		private void OnUploadButtonClicked(object o, EventArgs args) {
@@ -780,13 +778,30 @@ using Glade;
       AlbumTabSelected(null, null);
 		}
 		
+		private void UpdateFlameWindowLabel() {
+		  if (streambutton.Active) {
+		    label11.Markup = 
+		        "<span style='italic'>Drop photos here to delete them permanently.</span>";
+		  } else if (conflictbutton.Active) {
+		    label11.Markup =
+		        "<span style='italic'>Flames window is of no good use in this mode.</span>";
+		  } else if (selectedtab == 0) {
+		    label11.Markup = 
+		        "<span style='italic'>Drop photos here to remove from set.</span>";
+		  } else if (selectedtab == 1) {
+		    label11.Markup = 
+		        "<span style='italic'>Drop photos here to remove tag.</span>";
+		  } else {
+		    label11.Markup =
+		        "<span style='italic'>Wao! This almost never happens.</span>";
+		  }
+		}
+		
 		private void AlbumTabSelected(object o, EventArgs args) {
 		  eventbox1.ModifyBg(StateType.Normal, tabselectedcolor);
 		  eventbox2.ModifyBg(StateType.Normal, tabcolor);
 		  selectedtab = 0;
 		  leftcurselectedindex = 0;
-		  label11.Markup = 
-		      "<span style='italic'>Drop photos here to remove from set.</span>";
 		  PopulateAlbums();
 		}
 		
@@ -796,8 +811,6 @@ using Glade;
 		  selectedtab = 1;
 		  leftcurselectedindex = 0;
 		  textview2.Buffer.Text = "";
-		  label11.Markup = 
-		      "<span style='italic'>Drop photos here to remove tag.</span>";
 		  PopulateTags();
 		}
 		
@@ -994,11 +1007,64 @@ using Glade;
       eventbox3.DragDataReceived += OnPhotoDraggedForDeletion;
     }
     
+    private void PhotoDeletionHandler(string photoid) {
+      PersistentInformation.GetInstance().SetPhotoForDeletion(photoid);
+      foreach (Album album in PersistentInformation.GetInstance().GetAlbums()) {
+        PersistentInformation.GetInstance().DeletePhotoFromAlbum(photoid, album.SetId);
+        // Check if the photo is the primary photo in the  album, and replace
+        // it with a randomly selected new one. Set the album dirty, so that
+        // the new photo would be set as primary in the next update.
+        if (album.PrimaryPhotoid.Equals(photoid)) {
+          ArrayList photoidsforalbum = 
+              PersistentInformation.GetInstance().GetPhotoIdsForAlbum(album.SetId);
+          int newindex = (new Random()).Next(photoidsforalbum.Count);
+          string newphotoid = (string) photoidsforalbum[newindex];
+          PersistentInformation.GetInstance().SetPrimaryPhotoForAlbum(album.SetId, newphotoid);
+          PersistentInformation.GetInstance().SetAlbumDirty(album.SetId, true);
+        }
+      }
+    }
+    
     private void OnPhotoDraggedForDeletion(object o, DragDataReceivedArgs args) {
-      // Don't do anything if stream button or conflict button is pressed.
-      if (streambutton.Active || conflictbutton.Active) return;
-      
-      if (selectedtab == 0) { // albums
+      // Don't do anything if conflict button is on.
+      if (conflictbutton.Active) return;
+      if (streambutton.Active) {
+        int countphotos = treeview2.Selection.CountSelectedRows();
+        MessageDialog md = new MessageDialog(
+  	        window1, DialogFlags.DestroyWithParent, MessageType.Question,
+  	        ButtonsType.YesNo, 
+  	        "Do you really wish to permanently delete " + countphotos
+  	        + " photo(s) from the server");
+  	    ResponseType response = ResponseType.No;
+  	    response = (ResponseType) md.Run();
+  	    md.Destroy();
+  	    if (response == ResponseType.No) return;
+  	    md = new MessageDialog(
+  	        window1, DialogFlags.DestroyWithParent, MessageType.Question,
+  	        ButtonsType.YesNo, 
+  	        "Are you _really_ sure you wish to delete these " + countphotos
+  	        + " photo(s)? They will be deleted from the flickr server forever!");
+  	    response = ResponseType.No;
+  	    response = (ResponseType) md.Run();
+  	    md.Destroy();
+  	    if (response == ResponseType.No) return;
+  	    if (response == ResponseType.Yes) {
+  	      foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
+  	        string photoid = GetPhoto(path).Id;
+  	        // Handle the magic of deletion of photos, and updates database
+  	        // wide.
+            PhotoDeletionHandler(photoid);
+  	        // Convert path to childpath.
+  	        TreePath childpath = filter.ConvertPathToChildPath(path);
+  	        TreeIter iter;
+  	        photoStore.GetIter(out iter, childpath);
+  	        photoStore.Remove(ref iter);
+  	        _photos.RemoveAt(childpath.Indices[0]);
+  	      }
+  	    streambutton.Label = "Show Stream (" + _photos.Count + ")";
+  	    }
+      }
+      else if (selectedtab == 0) { // albums
         string setid = ((Album) _albums[leftcurselectedindex]).SetId;
         foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
 		      string photoid = GetPhoto(path).Id;
