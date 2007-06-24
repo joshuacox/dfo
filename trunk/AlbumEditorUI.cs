@@ -33,12 +33,14 @@ using Glade;
 		Image image4;
 		
 		private Album _album;
+		private bool _isnew;
 		
-		private AlbumEditorUI(Album album)
+		private AlbumEditorUI(Album album, bool isnew)
 		{
 		  Glade.XML gxml = new Glade.XML (null, "organizer.glade", "window3", null);
 		  gxml.Autoconnect (this);
 		  
+		  this._isnew = isnew;
 		  this._album = album;
 		  window3.Title = String.Format("Editing information for {0}", album.Title);
 		  window3.SetIconFromFile(DeskFlickrUI.ICON_PATH);
@@ -62,7 +64,11 @@ using Glade;
 		}
 		
 		public static void FireUp(Album album) {
-		  AlbumEditorUI editor = new AlbumEditorUI(album);
+		  new AlbumEditorUI(album, false);
+		}
+		
+		public static void FireUp(Album album, bool isnew) {
+		  new AlbumEditorUI(album, isnew);
 		}
 		
 		public void OnTitleChanged(object o, EventArgs args) {
@@ -79,6 +85,12 @@ using Glade;
 		
 		public void OnSaveButtonClicked(object o, EventArgs args) {
 		  PersistentInformation.GetInstance().SaveAlbum(_album);
+		  if (_isnew) {
+		    PersistentInformation.GetInstance().SetNewAlbum(_album.SetId);
+		    // Remove the dirty bit, otherwise update would try to _sync_ this
+		    // fake album with the server.
+		    PersistentInformation.GetInstance().SetAlbumDirty(_album.SetId, false);
+		  }
 		  window3.Destroy();
 		  DeskFlickrUI.GetInstance().PopulateAlbums();
 		}
