@@ -44,7 +44,6 @@ using Mono.Data.SqliteClient;
         + " lastupdate varchar(25) default '',\n"
         // Entries after this, can be ordered in any way. They're not
         // being read by select all.
-        + " lastsweep varchar(25) default '',\n"
         + " isdeleted integer default 0,\n"
         + " isdirty integer default 0\n"
         + ");";
@@ -55,7 +54,8 @@ using Mono.Data.SqliteClient;
         + " title varchar(256),\n"
         + " desc text,\n"
         + " photoid varchar(10),\n"
-        + " isdirty integer default 0\n"
+        + " isdirty integer default 0,\n"
+        + " isnew integer default 0\n"
         + ");";
 		
 		private static string CREATE_ALBUM_PHOTO_MAPPING_TABLE = 
@@ -293,6 +293,7 @@ using Mono.Data.SqliteClient;
 		  }
 		}
 		
+		// This method only returns those photos whose isdeleted bit is set to 0.
 		public ArrayList GetAllPhotos() {
 		  lock(_photolock) {
 		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
@@ -321,6 +322,25 @@ using Mono.Data.SqliteClient;
 		  dbcmd.Dispose();
 		  dbcon.Close();
 		  return photos;
+		  }
+		}
+		
+		// This method returns _all_ the photos present in table.
+		public ArrayList GetAllPhotoIds() {
+		  lock(_photolock) {
+		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
+      dbcon.Open();
+		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  dbcmd.CommandText = "select id from photo;";
+		  IDataReader reader = dbcmd.ExecuteReader();
+		  ArrayList photoids = new ArrayList();
+		  while(reader.Read()) {
+		    photoids.Add(reader.GetString(0));
+		  }
+		  reader.Close();
+		  dbcmd.Dispose();
+		  dbcon.Close();
+		  return photoids;
 		  }
 		}
 		
@@ -462,36 +482,6 @@ using Mono.Data.SqliteClient;
 		  }
 		}
 		
-		// These methods are utilized for a garbage collection like feature.
-		// All the photos sent back by the server are marked with the latest
-		// value of sweeep. The photos which haven't been swept in this round
-		// of updates, means that they have been removed from the server.
-		public void SetSweep(string photoid, string sweep) {
-		  lock (_photolock) {
-		  RunNonQuery(String.Format(
-		      "update photo set lastsweep='{0}' where id='{1}';", sweep, photoid));
-		  }
-		}
-		
-		public ArrayList GetPhotoIdsNotSwept(string sweep) {
-		  lock (_photolock) {
-		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
-      dbcon.Open();
-		  IDbCommand dbcmd = dbcon.CreateCommand();
-		  dbcmd.CommandText = String.Format(
-		      "select id from photo where lastsweep!='{0}';", sweep);
-		  IDataReader reader = dbcmd.ExecuteReader();
-		  ArrayList photoids = new ArrayList();
-		  while(reader.Read()) {
-		    photoids.Add(reader.GetString(0));
-		  }
-		  reader.Close();
-		  dbcmd.Dispose();
-		  dbcon.Close();
-		  return photoids;
-		  }
-		}
-		
 		// This method would set the deleted bit of photo.
 		public void SetPhotoForDeletion(string photoid) {
 		  lock (_photolock) {
@@ -583,6 +573,14 @@ using Mono.Data.SqliteClient;
       }
     }
     
+    public void SetAlbumDirtyIfNotNew(string setid) {
+      if (!HasAlbum(setid)) throw new Exception("Album not present: " + setid);
+      lock (_albumlock) {
+      RunNonQuery(String.Format(
+          "update album set isdirty=1 where setid='{0}' and isnew=0;", setid));
+      }
+    }
+    
     public bool IsAlbumDirty(string setid) {
       if (!HasAlbum(setid)) return false;
       lock (_albumlock) {
@@ -662,6 +660,44 @@ using Mono.Data.SqliteClient;
       if (isdirty) dirty = 1;
 		  dbcmd.CommandText = String.Format(
 		      "select * from album where isdirty={0};", dirty);
+		  IDataReader reader = dbcmd.ExecuteReader();
+      while(reader.Read()) {
+        string setid = reader.GetString(0);
+        string title = reader.GetString(1);
+        string desc = reader.GetString(2);
+        string photoid = reader.GetString(3);
+        Album album = new Album(setid, title, desc, photoid);
+        albums.Add(album);
+      }
+      reader.Close();
+      dbcmd.Dispose();
+      dbcon.Close();
+      return albums;
+      }
+		}
+		
+				
+		public void SetNewAlbum(string setid) {
+			lock (_albumlock) {
+		  RunNonQuery(String.Format(
+          "update album set isnew=1 where setid='{0}';", setid)); 
+		  }
+		}
+		
+		public bool IsAlbumNew(string setid) {
+		  lock (_albumlock) {
+		  return RunIsTrueQuery(String.Format(
+		      "select isnew from album where setid='{0}';", setid));
+		  }
+		}
+		
+		public ArrayList GetNewAlbums() {
+		  lock (_albumlock) {
+      ArrayList albums = new ArrayList();
+      IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
+      dbcon.Open();
+      IDbCommand dbcmd = dbcon.CreateCommand();
+		  dbcmd.CommandText = String.Format("select * from album where isnew=1;");
 		  IDataReader reader = dbcmd.ExecuteReader();
       while(reader.Read()) {
         string setid = reader.GetString(0);
@@ -1022,9 +1058,14 @@ using Mono.Data.SqliteClient;
 		}
 		
 		public void SaveAlbum(Album a) {
+		  bool isnew = IsAlbumNew(a.SetId);
 		  DeleteAlbum(a.SetId);
 		  InsertAlbum(a);
-		  SetAlbumDirty(a.SetId, true);
+		  if (isnew) SetNewAlbum(a.SetId);
+		  if (!HasAlbumPhoto(a.SetId, a.PrimaryPhotoid)) {
+		    AddPhotoToAlbum(a.PrimaryPhotoid, a.SetId);
+		  }
+		  SetAlbumDirtyIfNotNew(a.SetId);
 		}
 		
 		/*

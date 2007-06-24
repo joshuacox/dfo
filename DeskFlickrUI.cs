@@ -26,6 +26,12 @@ using Glade;
     CheckMenuItem checkmenuitem3;
     
     [Glade.Widget]
+    MenuItem menuitem3;
+    
+    [Glade.Widget]
+    MenuItem menuitem4;
+    
+    [Glade.Widget]
     ImageMenuItem imagemenuitem5;
     
     [Glade.Widget]
@@ -183,6 +189,11 @@ using Glade;
       // Temporarily store treeiters
       ArrayList treeiters = new ArrayList();
       foreach (Album a in PersistentInformation.GetInstance().GetAlbums()) {
+        if (PersistentInformation.GetInstance()
+                                 .GetPhotoIdsForAlbum(a.SetId).Count == 0) {
+          continue;
+        }
+        
         Photo primaryPhoto = PersistentInformation.GetInstance().
             GetPhoto(a.PrimaryPhotoid);
         Gdk.Pixbuf thumbnail = null;
@@ -316,7 +327,7 @@ using Glade;
 		        TreePath setselectedpath = treeview1.Selection.GetSelectedRows()[0];
             if (!streambutton.Active && !conflictbutton.Active
 		            && treeview2.Selection.GetSelectedRows().Length == 1
-		            && setselectedpath.Indices[0] == destindex){
+		            && setselectedpath.Indices[0] == destindex) {
 	            // Scenario: The user is viewing the set, and decides to
 	            // change the primary photo. He can do so by dragging the photo
 	            // from the respective set, to the set itself. However, make
@@ -324,12 +335,12 @@ using Glade;
               // The album selected is the same as the album the photo is
               // dragged on.
 	            PersistentInformation.GetInstance().SetPrimaryPhotoForAlbum(setid, photoid);
-	            PersistentInformation.GetInstance().SetAlbumDirty(setid, true);
+	            PersistentInformation.GetInstance().SetAlbumDirtyIfNotNew(setid);
 	            PopulateAlbums();
 		        }
 		      } else { // The photo isn't present in set.
 		        PersistentInformation.GetInstance().AddPhotoToAlbum(photoid, setid);
-		        PersistentInformation.GetInstance().SetAlbumDirty(setid, true);
+		        PersistentInformation.GetInstance().SetAlbumDirtyIfNotNew(setid);
 		        UpdateAlbumAtPath(path, (Album) _albums[destindex]);
 		      }
 		    }
@@ -705,6 +716,16 @@ using Glade;
 		  connectbutton.Clicked += new EventHandler(ConnectionHandler);
 		  toolbar2.Insert(connectbutton, -1);
 		  
+		  ToolButton addsetbutton = new ToolButton(Stock.Add);
+		  addsetbutton.Sensitive = true;
+		  addsetbutton.Clicked += new EventHandler(OnAddNewSetEvent);
+		  toolbar2.Insert(addsetbutton, -1);
+		  
+		  ToolButton editbutton = new ToolButton(Stock.Edit);
+		  editbutton.Sensitive = true;
+		  editbutton.Clicked += new EventHandler(OnEditButtonClicked);
+		  toolbar2.Insert(editbutton, -1);
+		  
 		  ToolButton quitbutton = new ToolButton(Stock.Quit);
 		  quitbutton.Sensitive = true;
 		  quitbutton.Clicked += new EventHandler(OnQuitEvent);
@@ -874,20 +895,50 @@ using Glade;
       imagemenuitem2.Activated += new EventHandler(ConnectionHandler);
       // Work online/offline menu item.
       checkmenuitem3.Activated += new EventHandler(OnWorkOfflineEvent);
+      // Add new set
+      menuitem3.Activated += new EventHandler(OnAddNewSetEvent);
+      // Edit
+      menuitem4.Activated += new EventHandler(OnEditButtonClicked);
       // Quit menu item.
       imagemenuitem5.Activated += new EventHandler(OnQuitEvent);
       // About button.
       menuitem2.Activated += new EventHandler(OnAboutButtonClicked);
     }
     
+    public void ShowMessageDialog(string message) {
+  	    MessageDialog md = new MessageDialog(
+  	        window1, DialogFlags.DestroyWithParent, MessageType.Info,
+  	        ButtonsType.Close, message);
+  	    md.Run();
+  	    md.Destroy();
+    }
+    
+    private void OnAddNewSetEvent(object sender, EventArgs args) {
+      if (treeview2.Selection.CountSelectedRows() == 0) {
+        ShowMessageDialog("Please select a photo to be used as primary photo"
+  	        + " for the album. You can change the primary photo later as well.");
+  	    return;
+      }
+      
+      TreePath path = treeview2.Selection.GetSelectedRows()[0];
+      Photo p = GetPhoto(path);
+      Random rand = new Random();
+      int setid = rand.Next(100);
+      while (PersistentInformation.GetInstance().HasAlbum(setid.ToString())) {
+        setid = rand.Next(100);
+      }
+      // Got a new unique setid.
+      Album album = new Album(setid.ToString(), "New Album", "", p.Id);
+      AlbumEditorUI.FireUp(album, true);
+    }
+    
 		private void OnQuitEvent (object sender, EventArgs args) {
-
   	  ResponseType result = ResponseType.Yes;
   	  // If the connection is busy, notify the user that he's aborting
   	  // the connection.
   	  if (FlickrCommunicator.GetInstance().IsBusy) {
   	    MessageDialog md = new MessageDialog(
-  	        null, DialogFlags.DestroyWithParent, MessageType.Question,
+  	        window1, DialogFlags.DestroyWithParent, MessageType.Question,
   	        ButtonsType.YesNo, 
   	        "Connection is busy. Do you really wish to abort the connection"
   	        + " and quit the application?");
@@ -980,8 +1031,9 @@ using Glade;
   	      SetStatusLabel(label + " Counting time for reconnection...");
   	      SetLimitsProgressBar(100);
   	    });
+  	    // Wait for 30 minutes.
   	    for (int i=0; i<100; i++) {
-  	      Thread.Sleep(6*1000); // 6 seconds
+  	      Thread.Sleep(18*1000); // 18 seconds
   	      Gtk.Application.Invoke (delegate {
   	        IncrementProgressBar(1);
   	      });
@@ -1020,9 +1072,11 @@ using Glade;
           int newindex = (new Random()).Next(photoidsforalbum.Count);
           string newphotoid = (string) photoidsforalbum[newindex];
           PersistentInformation.GetInstance().SetPrimaryPhotoForAlbum(album.SetId, newphotoid);
-          PersistentInformation.GetInstance().SetAlbumDirty(album.SetId, true);
+          PersistentInformation.GetInstance().SetAlbumDirtyIfNotNew(album.SetId);
         }
       }
+      // Now delete the tags associated with the photo.
+      PersistentInformation.GetInstance().DeleteAllTags(photoid);
     }
     
     private void OnPhotoDraggedForDeletion(object o, DragDataReceivedArgs args) {
@@ -1034,7 +1088,7 @@ using Glade;
   	        window1, DialogFlags.DestroyWithParent, MessageType.Question,
   	        ButtonsType.YesNo, 
   	        "Do you really wish to permanently delete " + countphotos
-  	        + " photo(s) from the server");
+  	        + " photo(s) from the server?");
   	    ResponseType response = ResponseType.No;
   	    response = (ResponseType) md.Run();
   	    md.Destroy();
@@ -1069,7 +1123,7 @@ using Glade;
         foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
 		      string photoid = GetPhoto(path).Id;
 		      PersistentInformation.GetInstance().DeletePhotoFromAlbum(photoid, setid);
-		      PersistentInformation.GetInstance().SetAlbumDirty(setid, true);
+		      PersistentInformation.GetInstance().SetAlbumDirtyIfNotNew(setid);
         }
       } else if (selectedtab == 1) { // tags
         string tag = (string) _tags[leftcurselectedindex];

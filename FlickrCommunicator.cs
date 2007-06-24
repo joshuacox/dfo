@@ -110,6 +110,7 @@ using FlickrNet;
         UpdateStream();
   		  UpdateAlbums();
   		  foreach (Album a in PersistentInformation.GetInstance().GetAlbums()) {
+  		    if (PersistentInformation.GetInstance().IsAlbumNew(a.SetId)) continue;
   		    UpdatePhotosForAlbum(a);
   		    Gtk.Application.Invoke (delegate {
   		      DeskFlickrUI.GetInstance().RefreshLeftTreeView();
@@ -122,7 +123,10 @@ using FlickrNet;
   		  // would end up removing the changes, and only show them again at 
   		  // the next update.
   		  SyncDirtyPhotosToServer();
+  		  
+  		  SyncNewAlbumsToServer();
   		  SyncDirtyAlbumsToServer();
+  		  
   		  CheckPhotosToDownload();
   		  CheckPhotosToUpload();
   		  UpdateUploadStatus();
@@ -212,6 +216,36 @@ using FlickrNet;
 		    }
 		  }
 		  throw new Exception("FlickrCommunicator: GetAlbumList unreachable code");
+		}
+		
+		
+		private FlickrNet.Photoset SafelyCreateNewAlbum(Album album) {
+		  FlickrNet.Photoset photoset;
+		  for (int i=0; i<MAXTRIES; i++) {
+		    try {
+		      photoset = flickrObj.PhotosetsCreate(album.Title, 
+		                                           album.Desc, album.PrimaryPhotoid);
+		      return photoset;
+		    } catch(FlickrNet.FlickrException e) {
+          // Status quo, if can't create any new sets. Let the information
+          // be there, so that we can retry.
+          if (e.Code == 3) {
+            Gtk.Application.Invoke (delegate {
+              DeskFlickrUI.GetInstance().ShowMessageDialog(
+                  "Can't create a new set. You've reached the maximum number"
+                  + " of photosets limit.");
+            });
+            return null; // No need to retry.
+          }
+		      if (i == MAXTRIES-1) {
+		        PrintException(e);
+		        if (e.Code == CODE_TIMEOUT) _isConnected = false;
+		        return null;
+		      }
+		    }
+		    continue;
+		  }
+		  throw new Exception("FlickrCommunicator: CreateNewAlbum unreachable code");
 		}
 		
 		// To keep it simple, if any of the steps involved in retrieving
@@ -317,10 +351,12 @@ using FlickrNet;
 		  }
 		  
 		  // Now remove the albums which are no longer present on the server.
-		  ArrayList cleanalbums = 
-		      PersistentInformation.GetInstance().GetDirtyAlbums(false);
-      foreach (Album album in cleanalbums) {
-        if (!setids.Contains(album.SetId)) {
+		  ArrayList allalbums = PersistentInformation.GetInstance().GetAlbums();
+      foreach (Album album in allalbums) {
+        // If the album is new, skip the deletion.
+        if (!setids.Contains(album.SetId) 
+            && !PersistentInformation.GetInstance().IsAlbumNew(album.SetId)) {
+
           PersistentInformation.GetInstance().DeleteAlbum(album.SetId);
           PersistentInformation.GetInstance().DeleteAllPhotosFromAlbum(album.SetId);
         }
@@ -411,7 +447,8 @@ using FlickrNet;
 		  }
 		}
 		
-		private void UpdatePhotos(FlickrNet.PhotoCollection photos, string sweep) {
+		private void UpdatePhotos(FlickrNet.PhotoCollection photos, 
+		                          ref ArrayList serverphotoids) {
 		  foreach (FlickrNet.Photo p in photos) {
         DelegateIncrementProgressBar();
 		    // Set the sweep value, which says that the photo is present
@@ -422,7 +459,7 @@ using FlickrNet;
 		      if (photo == null) continue;
 		      PersistentInformation.GetInstance().UpdatePhoto(photo);
 		    }
-		    PersistentInformation.GetInstance().SetSweep(p.PhotoId, sweep);
+		    serverphotoids.Add(p.PhotoId);
 		  }
 		}
 		
@@ -443,19 +480,21 @@ using FlickrNet;
 		  Gtk.Application.Invoke (delegate {
 		    DeskFlickrUI.GetInstance().SetLimitsProgressBar((int) photos.TotalPhotos);
 		  });
-		  
-		  UpdatePhotos(photos.PhotoCollection, sweep);
+		  ArrayList serverphotoids = new ArrayList();
+		  UpdatePhotos(photos.PhotoCollection, ref serverphotoids);
 		  for (int curpage=2; curpage <= photos.TotalPages; curpage++) {
 		    options.Page = curpage;
 		    photos = flickrObj.PhotosSearch(options);
 		    Console.WriteLine("Got photos on page " + curpage + " : " + photos.PhotoCollection.Count);
-		    UpdatePhotos(photos.PhotoCollection, sweep);
+		    UpdatePhotos(photos.PhotoCollection, ref serverphotoids);
 		  }
-		  // Delete the photos whose sweep value is not the latest one, i.e.
-		  // they are not present on the server.
+		  
+		  // Delete the photos not present on server.
 		  foreach (string photoid in 
-		      PersistentInformation.GetInstance().GetPhotoIdsNotSwept(sweep)) {
+		      PersistentInformation.GetInstance().GetAllPhotoIds()) {
 		    // DeletePhoto method takes care of deleting the tags as well.
+		    if (serverphotoids.Contains(photoid)) continue;
+		    Console.WriteLine("Deleting photo: " + photoid);
 		    PersistentInformation.GetInstance().DeletePhoto(photoid);
 		  }
 		}
@@ -513,6 +552,46 @@ using FlickrNet;
 		  }
 		}
 		
+		private void SyncNewAlbumsToServer() {
+		  ArrayList albums = PersistentInformation.GetInstance().GetNewAlbums();
+		  Console.WriteLine("SyncNewAlbumsToServer called, got albums: " + albums.Count);
+		  Gtk.Application.Invoke (delegate {
+		    DeskFlickrUI.GetInstance().SetStatusLabel("Creating sets on server...");
+        DeskFlickrUI.GetInstance().SetProgressBarText("");
+        DeskFlickrUI.GetInstance().SetLimitsProgressBar(albums.Count);
+      });
+      foreach (Album album in albums) {
+        Console.WriteLine("Creating album: " + album.Title);
+        Gtk.Application.Invoke (delegate {
+          DeskFlickrUI.GetInstance().SetStatusLabel(
+              "Creating sets on server... " + album.Title);
+        });
+        DelegateIncrementProgressBar();
+        FlickrNet.Photoset photoset = SafelyCreateNewAlbum(album);
+        if (photoset == null) continue;
+        ArrayList photoids = PersistentInformation.GetInstance()
+            .GetPhotoIdsForAlbum(album.SetId);
+        // Remove the old fake album entry.
+        PersistentInformation.GetInstance().DeleteAlbum(album.SetId);
+        PersistentInformation.GetInstance().DeleteAllPhotosFromAlbum(album.SetId);
+        // Create and add a new one.
+        Album newalbum = new Album(photoset.PhotosetId, album.Title,
+                                   album.Desc, album.PrimaryPhotoid);
+        PersistentInformation.GetInstance().InsertAlbum(newalbum);
+        // Set the album dirty, in case the photosetseditphotos operation
+        // fails, in this round of updates. Then, we'll retry the updates
+        // next time, without they being overridden.
+        PersistentInformation.GetInstance().SetAlbumDirty(newalbum.SetId, true);
+        foreach (string photoid in photoids) {
+          PersistentInformation.GetInstance().AddPhotoToAlbum(photoid, newalbum.SetId);
+        }
+        // Add the photos to the new album.
+        flickrObj.PhotosetsEditPhotos(newalbum.SetId, newalbum.PrimaryPhotoid,
+                                      Utils.GetDelimitedString(photoids, ","));
+        PersistentInformation.GetInstance().SetAlbumDirty(newalbum.SetId, false);
+      }
+		}
+		
 		private void SyncDirtyAlbumsToServer() {
 		  ArrayList albums = PersistentInformation.GetInstance().GetDirtyAlbums(true);
 		  if (albums.Count == 0) return;
@@ -528,9 +607,15 @@ using FlickrNet;
         // Sync the primary photo id of the set.
         ArrayList photoids = 
             PersistentInformation.GetInstance().GetPhotoIdsForAlbum(album.SetId);
-        flickrObj.PhotosetsEditPhotos(album.SetId, album.PrimaryPhotoid,
-                                      Utils.GetDelimitedString(photoids, ","));
-        PersistentInformation.GetInstance().SetAlbumDirty(album.SetId, false);
+        // If no photos inside set, delete the set.
+        if (photoids.Count == 0) {
+          flickrObj.PhotosetsDelete(album.SetId);
+          PersistentInformation.GetInstance().DeleteAlbum(album.SetId);
+        } else {
+          flickrObj.PhotosetsEditPhotos(album.SetId, album.PrimaryPhotoid,
+                                        Utils.GetDelimitedString(photoids, ","));
+          PersistentInformation.GetInstance().SetAlbumDirty(album.SetId, false);
+        }
       }
 		}
 		
