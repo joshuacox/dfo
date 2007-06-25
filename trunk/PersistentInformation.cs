@@ -26,10 +26,10 @@ using Mono.Data.SqliteClient;
 		private static string DOWNLOAD_FOLDER = GCONF_APP_PATH + "/downloadfolder";
 		private static string UPLOAD_FILE = GCONF_APP_PATH + "/uploadfile";
 		
-		private static string HOME = 
-		    System.Environment.GetEnvironmentVariable("HOME") + "/.desktopflickr";
-		private static string THUMBNAIL_DIR = HOME + "/thumbnails";
-		private static string SMALL_IMAGE_DIR = HOME + "/small_images";
+		private static string HOME = System.IO.Path.Combine(
+		    System.Environment.GetEnvironmentVariable("HOME"), ".desktopflickr");
+		private static string THUMBNAIL_DIR = System.IO.Path.Combine(HOME, "thumbnails");
+		private static string SMALL_IMAGE_DIR = System.IO.Path.Combine(HOME, "small_images");
     private static string DB_PATH = "URI=file:" + HOME + "/sqlite.db,version=3,busy_timeout=30000";
     
     private static string CREATE_PHOTO_TABLE = 
