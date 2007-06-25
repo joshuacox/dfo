@@ -83,9 +83,11 @@ using Glade;
     // For toolbar2 on top left
     ToolButton connectbutton;
     
-    public static string ICON_PATH = "icons/Font-Book.ico";
-    public static string THUMBNAIL_PATH = "icons/FontBookThumbnail.png";
-    public static string FLICKR_ICON = "icons/flickr_logo.gif";
+    private static string BASE_DIR = System.AppDomain.CurrentDomain.BaseDirectory;
+    private static string IMAGE_DIR = System.IO.Path.Combine(BASE_DIR, "icons");
+    public static string ICON_PATH = System.IO.Path.Combine(IMAGE_DIR, "Font-Book.ico");
+    public static string THUMBNAIL_PATH = System.IO.Path.Combine(IMAGE_DIR, "FontBookThumbnail.png");
+    public static string FLICKR_ICON = System.IO.Path.Combine(IMAGE_DIR, "flickr_logo.gif");
     
     private static DeskFlickrUI deskflickr = null;
     private static Gdk.Color tabselectedcolor = new Gdk.Color(0x6A, 0x79, 0x7A);
