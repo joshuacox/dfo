@@ -45,7 +45,6 @@ using System.Collections;
     public static void IfExistsDeleteFile(string filename) {
       System.IO.FileInfo fileinfo = new System.IO.FileInfo(filename);
       if (fileinfo.Exists) {
-        Console.WriteLine("File exists, deleting it: " + filename);
         fileinfo.Delete();
       }
     }

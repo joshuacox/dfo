@@ -189,10 +189,6 @@ using Glade;
       // Temporarily store treeiters
       ArrayList treeiters = new ArrayList();
       foreach (Album a in PersistentInformation.GetInstance().GetAlbums()) {
-        if (PersistentInformation.GetInstance()
-                                 .GetPhotoIdsForAlbum(a.SetId).Count == 0) {
-          continue;
-        }
         
         Photo primaryPhoto = PersistentInformation.GetInstance().
             GetPhoto(a.PrimaryPhotoid);
@@ -220,7 +216,6 @@ using Glade;
         if (leftcurselectedindex >= treeiters.Count) {
           leftcurselectedindex = treeiters.Count - 1;
         }
-        Console.WriteLine("leftcurselectedindex in doselection is: " + leftcurselectedindex);
         TreeIter curiter = (TreeIter) treeiters[leftcurselectedindex];
         treeview1.Selection.SelectIter(curiter);
       }
@@ -250,17 +245,17 @@ using Glade;
       ArrayList treeiters = new ArrayList();
       foreach (string tag in PersistentInformation.GetInstance().GetAllTags()) {
         Photo p = PersistentInformation.GetInstance().GetSinglePhotoForTag(tag);
-        Console.WriteLine("p is: " + p + " for tag: " + tag);
-        if (p == null) Console.WriteLine("p is null ");
-        TreeIter curiter = tagStore.AppendValues(p.Thumbnail, GetInfoTag(tag));
+        Gdk.Pixbuf thumbnail = null;
+        if (p != null) {
+          thumbnail = p.Thumbnail;
+        }
+        TreeIter curiter = tagStore.AppendValues(thumbnail, GetInfoTag(tag));
         treeiters.Add(curiter);
         // Now add the tag name to _tags.
         this._tags.Add(tag);
       }
       treeview1.Model = tagStore;
-      Console.WriteLine("Doing selection : treeiters: " + treeiters.Count);
       DoSelection(treeiters);
-      Console.WriteLine("Completed selection");
       treeview1.ShowAll();
     }
     
@@ -319,15 +314,18 @@ using Glade;
 		  if (selectedtab == 0) { // albums
 		    string setid = ((Album) _albums[destindex]).SetId;
 		    
-		    foreach (TreePath tp in treeview2.Selection.GetSelectedRows()) {
-		      string photoid = ((Photo) _photos[tp.Indices[0]]).Id;
+		    foreach (TreePath photospath in treeview2.Selection.GetSelectedRows()) {
+		      TreePath childpath = filter.ConvertPathToChildPath(photospath);
+		      string photoid = ((Photo) _photos[childpath.Indices[0]]).Id;
 		      bool exists = PersistentInformation.GetInstance()
-		          .HasAlbumPhoto(photoid, setid);
+		                                         .HasAlbumPhoto(photoid, setid);
 		      if (exists) {
-		        TreePath setselectedpath = treeview1.Selection.GetSelectedRows()[0];
+		        TreePath albumselectedpath = treeview1.Selection.GetSelectedRows()[0];
             if (!streambutton.Active && !conflictbutton.Active
 		            && treeview2.Selection.GetSelectedRows().Length == 1
-		            && setselectedpath.Indices[0] == destindex) {
+		            // If dragged dest album is same as the one selected.
+		            && albumselectedpath.Indices[0] == destindex) {
+		            
 	            // Scenario: The user is viewing the set, and decides to
 	            // change the primary photo. He can do so by dragging the photo
 	            // from the respective set, to the set itself. However, make
@@ -340,14 +338,18 @@ using Glade;
 		        }
 		      } else { // The photo isn't present in set.
 		        PersistentInformation.GetInstance().AddPhotoToAlbum(photoid, setid);
+		        if (PersistentInformation.GetInstance().GetPhotoIdsForAlbum(setid).Count == 1) {
+		          PersistentInformation.GetInstance().SetPrimaryPhotoForAlbum(setid, photoid);
+		        }
 		        PersistentInformation.GetInstance().SetAlbumDirtyIfNotNew(setid);
 		        UpdateAlbumAtPath(path, (Album) _albums[destindex]);
 		      }
 		    }
 		  }
 		  else if (selectedtab == 1) { // tags
-		    foreach (TreePath tp in treeview2.Selection.GetSelectedRows()) {
-		      string photoid = ((Photo) _photos[tp.Indices[0]]).Id;
+		    foreach (TreePath photospath in treeview2.Selection.GetSelectedRows()) {
+		      TreePath childpath = filter.ConvertPathToChildPath(photospath);
+		      string photoid = ((Photo) _photos[childpath.Indices[0]]).Id;
 		      string tag = (string) _tags[destindex];
 		      PersistentInformation.GetInstance().InsertTag(photoid, tag);
 		      PersistentInformation.GetInstance().SetPhotoDirty(photoid, true);
@@ -617,6 +619,7 @@ using Glade;
         PhotoEditorUI.FireUp(selectedphotos, conflictbutton.Active);
   		} // check left tree now.
   		else if (treeview1.Selection.GetSelectedRows().Length > 0) {
+  		  if (selectedtab == 1) return; // Tags can't be edited.
   		  TreePath path = treeview1.Selection.GetSelectedRows()[0];
   		  Album album = new Album((Album) _albums[path.Indices[0]]);
   		  AlbumEditorUI.FireUp(album);
@@ -705,13 +708,12 @@ using Glade;
       chooser.Destroy();
       if (filenames == null) return;
       foreach (string filename in filenames) {
-        Console.WriteLine("Upload file: " + filename);
         PersistentInformation.GetInstance().InsertEntryToUpload(filename);
       }
 		}
 		
 		private void SetTopLeftToolBar() {
-		  connectbutton = new ToolButton(Stock.Connect);
+		  connectbutton = new ToolButton(Stock.Refresh);
 		  connectbutton.Sensitive = true;
 		  connectbutton.Clicked += new EventHandler(ConnectionHandler);
 		  toolbar2.Insert(connectbutton, -1);
@@ -975,7 +977,6 @@ using Glade;
     }
     
   	private void OnWorkOfflineEvent(object sender, EventArgs args) {
-  	  Console.WriteLine("Work offline status changed: " + IsWorkOffline);
   	  if (IsWorkOffline) { // Work OFF-line.
   	    FlickrCommunicator.GetInstance().Disconnect();
   	    if (_connthread != null) _connthread.Abort();
@@ -989,7 +990,6 @@ using Glade;
   	    FlickrCommunicator comm = FlickrCommunicator.GetInstance();
   	    // The communicator can't be busy, because the connection thread
   	    // has been aborted.
-  	    Console.WriteLine("Ensuring that the application is authenticated.");
   	    Gtk.Application.Invoke( delegate {
   	      SetStatusLabel("Authenticating application...");
   	    });
@@ -1015,10 +1015,8 @@ using Glade;
   	    }
   	    // TODO: This particular part of the code would probably never be called.
   	    while (comm.IsBusy) {
-  	      Console.WriteLine("Already busy.. waiting for 5 mins");
   	      Thread.Sleep(5*60*1000); // wait for the connection to be finished.
   	    }
-  	    Console.WriteLine("Attempting connection");
   	    Gtk.Application.Invoke( delegate {
   	      SetStatusLabel("Attempting connection...");
   	    });
@@ -1103,8 +1101,20 @@ using Glade;
   	    md.Destroy();
   	    if (response == ResponseType.No) return;
   	    if (response == ResponseType.Yes) {
-  	      foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
-  	        string photoid = GetPhoto(path).Id;
+  	      TreePath[] selectedpaths = treeview2.Selection.GetSelectedRows();
+  	      for (int i=0; i<selectedpaths.Length; i++) {
+  	        // The problem here that I'm solving is that, everytime we
+  	        // remove an entry from the photoStore, the paths that we
+  	        // get from selection, point to different photos. Basically,
+  	        // it would point to one photo below the selected one. So,
+  	        // I'm making adjustments to the path itself, to make it
+  	        // point to the original selected photo.
+  	        TreePath path = selectedpaths[i];
+  	        for (int j=0; j<i; j++) {
+  	          path.Prev();
+  	        }
+  	        Photo photo = GetPhoto(path);
+  	        string photoid = photo.Id;
   	        // Handle the magic of deletion of photos, and updates database
   	        // wide.
             PhotoDeletionHandler(photoid);
@@ -1112,7 +1122,7 @@ using Glade;
   	        TreePath childpath = filter.ConvertPathToChildPath(path);
   	        TreeIter iter;
   	        photoStore.GetIter(out iter, childpath);
-  	        photoStore.Remove(ref iter);
+            photoStore.Remove(ref iter);
   	        _photos.RemoveAt(childpath.Indices[0]);
   	      }
   	    streambutton.Label = "Show Stream (" + _photos.Count + ")";
@@ -1124,6 +1134,13 @@ using Glade;
 		      string photoid = GetPhoto(path).Id;
 		      PersistentInformation.GetInstance().DeletePhotoFromAlbum(photoid, setid);
 		      PersistentInformation.GetInstance().SetAlbumDirtyIfNotNew(setid);
+        }
+        if (PersistentInformation.GetInstance().GetPhotoIdsForAlbum(setid).Count == 0) {
+          PersistentInformation.GetInstance().SetPrimaryPhotoForAlbum(setid, "0");
+          // Delete the album if it is new.
+          if (PersistentInformation.GetInstance().IsAlbumNew(setid)) {
+            PersistentInformation.GetInstance().DeleteAlbum(setid);
+          }
         }
       } else if (selectedtab == 1) { // tags
         string tag = (string) _tags[leftcurselectedindex];
