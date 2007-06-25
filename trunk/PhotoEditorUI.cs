@@ -493,7 +493,8 @@ using Glade;
         PersistentInformation.GetInstance().SavePhoto(p);
 		  }
 		  window2.Destroy();
-		  DeskFlickrUI.GetInstance().UpdatePhotos(_selectedphotos);
 		  DeskFlickrUI.GetInstance().UpdateToolBarButtons();
+		  if (_isconflictmode) DeskFlickrUI.GetInstance().OnConflictButtonClicked(null, null);
+		  else DeskFlickrUI.GetInstance().UpdatePhotos(_selectedphotos); 
 		}
 	}

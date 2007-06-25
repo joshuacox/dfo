@@ -344,6 +344,25 @@ using Mono.Data.SqliteClient;
 		  }
 		}
 		
+		public string GetDatePosted(string photoid) {
+		  lock (_photolock) {
+		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
+      dbcon.Open();
+		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  dbcmd.CommandText = String.Format(
+		      "select dateposted from photo where id='{0}';", photoid);
+		  IDataReader reader = dbcmd.ExecuteReader();
+		  string dateposted = "0";
+		  if (reader.Read()) {
+		    dateposted = reader.GetString(0);
+		  }
+		  reader.Close();
+		  dbcmd.Dispose();
+		  dbcon.Close();
+		  return dateposted;
+		  }
+		}
+		
 		public bool HasPhoto(string photoid) {
 		  lock (_photolock) {
 		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
@@ -770,7 +789,8 @@ using Mono.Data.SqliteClient;
       dbcon.Open();
 		  IDbCommand dbcmd = dbcon.CreateCommand();
 		  dbcmd.CommandText = String.Format(
-		      "select photoid from setphoto where setid='{0}';", setid);
+		      "select setphoto.photoid from setphoto, photo where setphoto.setid='{0}'"
+		      + " and photo.id=setphoto.photoid order by photo.dateposted desc;", setid);
 		  IDataReader reader = dbcmd.ExecuteReader();
 		  while (reader.Read()) {
 		    photoids.Add(reader.GetString(0));
@@ -805,7 +825,7 @@ using Mono.Data.SqliteClient;
 		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
       dbcon.Open();
 		  IDbCommand dbcmd = dbcon.CreateCommand();
-		  dbcmd.CommandText = "select distinct tag from tag;";
+		  dbcmd.CommandText = "select distinct tag from tag order by tag;";
 		  IDataReader reader = dbcmd.ExecuteReader();
 		  while(reader.Read()) {
 		    tags.Add(reader.GetString(0));
@@ -844,7 +864,8 @@ using Mono.Data.SqliteClient;
       dbcon.Open();
 		  IDbCommand dbcmd = dbcon.CreateCommand();
 		  dbcmd.CommandText = String.Format(
-		      "select photoid from tag where tag='{0}';", tag);
+		      "select tag.photoid from tag, photo where tag.tag='{0}'"
+		      + " and tag.photoid=photo.id order by photo.dateposted desc;", tag);
 		  IDataReader reader = dbcmd.ExecuteReader();
 		  while(reader.Read()) {
 		    photoids.Add(reader.GetString(0));
@@ -878,7 +899,7 @@ using Mono.Data.SqliteClient;
       dbcon.Open();
 		  IDbCommand dbcmd = dbcon.CreateCommand();
 		  dbcmd.CommandText = String.Format(
-		      "select distinct tag from tag where photoid='{0}';", photoid);
+		      "select distinct tag from tag where photoid='{0}' order by tag;", photoid);
 		  IDataReader reader = dbcmd.ExecuteReader();
 		  while(reader.Read()) {
 		    tags.Add(reader.GetString(0));
@@ -1048,6 +1069,7 @@ using Mono.Data.SqliteClient;
 		 * Methods to be used by editor.
 		 */
 		public void SavePhoto(Photo p) {
+		  p.DatePosted = GetDatePosted(p.Id);
 		  DeletePhoto(p.Id);
 		  InsertPhoto(p);
 		  SetPhotoDirty(p.Id, true);

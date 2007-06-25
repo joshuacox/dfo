@@ -673,8 +673,8 @@ using FlickrNet;
 		    // Set the title to photo name. Set the photo to private mode for now.
 		    // Add a tag "dfo" to uploaded photo.
 		    string photoid = flickrObj.UploadPicture(
-		        filename, finfo.Name, "Uploaded through Flickr Desktop Organizer",
-		        "dfo", false, false, false);
+		        filename, finfo.Name, "Uploaded through Desktop Flickr Organizer",
+		        "dfoupload", false, false, false);
 		    if (photoid == null) continue;
 		    
 		    // The photo has been successfully uploaded.

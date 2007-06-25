@@ -349,13 +349,22 @@ using Glade;
 		    }
 		  }
 		  else if (selectedtab == 1) { // tags
+		    ArrayList selectedphotos = new ArrayList();
 		    foreach (TreePath photospath in treeview2.Selection.GetSelectedRows()) {
 		      TreePath childpath = filter.ConvertPathToChildPath(photospath);
-		      string photoid = ((Photo) _photos[childpath.Indices[0]]).Id;
+		      Photo photo = (Photo) _photos[childpath.Indices[0]];
 		      string tag = (string) _tags[destindex];
-		      PersistentInformation.GetInstance().InsertTag(photoid, tag);
-		      PersistentInformation.GetInstance().SetPhotoDirty(photoid, true);
+		      PersistentInformation.GetInstance().InsertTag(photo.Id, tag);
+		      PersistentInformation.GetInstance().SetPhotoDirty(photo.Id, true);
+		      
+		      Photo newphoto = new Photo(photo);
+		      newphoto.AddTag(tag);
+		      SelectedPhoto selphoto = new SelectedPhoto(newphoto, childpath.ToString());
+		      selectedphotos.Add(selphoto);
 		    }
+		    // UpdatePhotos will replace the old photos, with the new ones containing
+		    // the tag information.
+		    UpdatePhotos(selectedphotos);
 		    UpdateTagAtPath(path, (string) _tags[destindex]);
 		  }
 		}
@@ -676,7 +685,7 @@ using Glade;
 		  if (streambutton.Active) UpdateFlameWindowLabel();
 		}
 		
-		private void OnConflictButtonClicked(object o, EventArgs args) {
+		public void OnConflictButtonClicked(object o, EventArgs args) {
 		  if (conflictbutton.Active) {
 		    streambutton.Active = false;
 	      ArrayList photos = new ArrayList();
