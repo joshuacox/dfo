@@ -44,6 +44,7 @@ using Mono.Data.SqliteClient;
         + " lastupdate varchar(25) default '',\n"
         // Entries after this, can be ordered in any way. They're not
         // being read by select all.
+        + " dateposted varchar(25) default '',\n"
         + " isdeleted integer default 0,\n"
         + " isdirty integer default 0\n"
         + ");";
@@ -187,7 +188,6 @@ using Mono.Data.SqliteClient;
 		}
 		
 		private void RunNonQuery(string query) {
-		  Console.WriteLine("Running: " + query);
 		  lock (_writelock) {
 		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
       dbcon.Open();
@@ -299,7 +299,7 @@ using Mono.Data.SqliteClient;
 		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
       dbcon.Open();
 		  IDbCommand dbcmd = dbcon.CreateCommand();
-		  dbcmd.CommandText = "select * from photo where isdeleted=0 order by lastupdate desc;";
+		  dbcmd.CommandText = "select * from photo where isdeleted=0 order by dateposted desc;";
 		  IDataReader reader = dbcmd.ExecuteReader();
 		  ArrayList photos = new ArrayList();
 		  while(reader.Read()) {
@@ -435,10 +435,10 @@ using Mono.Data.SqliteClient;
 		  string safeDesc = p.Description.Replace("'", "''");
 		  RunNonQuery(String.Format(
 		      "insert into photo (id, title, desc, license, ispublic, "
-		      + "isfriend, isfamily, lastupdate) values('{0}','{1}','{2}',{3}"
-		      + ",{4},{5},{6},'{7}');",
+		      + "isfriend, isfamily, lastupdate, dateposted) values('{0}','{1}','{2}',{3}"
+		      + ",{4},{5},{6},'{7}','{8}');",
 		       p.Id, safeTitle, safeDesc, p.License, p.IsPublic, p.IsFriend,
-		       p.IsFamily, p.LastUpdate));
+		       p.IsFamily, p.LastUpdate, p.DatePosted));
 		  }
 		  foreach (string tag in p.Tags) {
 		    InsertTag(p.Id, tag);
@@ -868,11 +868,7 @@ using Mono.Data.SqliteClient;
 		public Photo GetSinglePhotoForTag(string tag) {
 		  ArrayList photoids = GetPhotoIdsForTag(tag);
 		  int index = rand.Next(photoids.Count);
-		  if (photoids.Count > 0) {
-		    Console.WriteLine("Getsinglephoto: " + (string) photoids[index] 
-		    + " index = " + index + " count: " + photoids.Count);
-		    return GetPhoto((string) photoids[index]);
-		  } else return null;
+		  return GetPhoto((string) photoids[index]);
 		}
 		
 		public ArrayList GetTags(string photoid) {

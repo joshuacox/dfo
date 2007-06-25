@@ -12,6 +12,7 @@ using System.Collections;
 		private int isfriend;
 		private int isfamily;
 		private string lastupdate;
+		private string dateposted;
 		private ArrayList tags;
 		
 		public Photo(string id, string title, string desc, int license,
@@ -192,5 +193,14 @@ using System.Collections;
 		  set {
 		    isfriend = value;
 		  }
+    }
+    
+    public string DatePosted {
+      get {
+        return dateposted;
+      }
+      set {
+        dateposted = value;
+      }
     }
 	}

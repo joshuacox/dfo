@@ -57,7 +57,6 @@ using FlickrNet;
 		  dialog1.SetIconFromFile(DeskFlickrUI.ICON_PATH);
 		  dialog1.ShowAll();
 		  ConnectToFlickr();
-		  Console.WriteLine("Should show up the new gui now.");
 		}
 		
 		public static void FireUp() {
@@ -68,23 +67,19 @@ using FlickrNet;
 		  Auth auth = this.flickrObj.AuthGetToken(frob);
 		  string token = auth.Token;
 		  PersistentInformation.GetInstance().Token = token;
-		  Console.WriteLine("Set the token in gconf.");
 		  dialog1.Destroy();
 		}
 		
 		private void OnButtonPressMoreInfo(object sender, EventArgs e) {
 		  string moreInfoUrl = 
-		      "http://www.flickr.com/services/api/auth.howto.desktop.html";
+		      "http://www.flickr.com/services/auth/list.gne";
 		  System.Diagnostics.Process.Start(moreInfoUrl);
 		}
 		
 		private void ConnectToFlickr() {
-		  Console.WriteLine("Inside connect to flickr.");
-
 		  this.flickrObj = new Flickr(this._apikey, this._secret);
 		  frob = this.flickrObj.AuthGetFrob();
-		  string url = this.flickrObj.AuthCalcUrl(frob, 
-		                                          AuthLevel.Read | AuthLevel.Write);
+		  string url = this.flickrObj.AuthCalcUrl(frob, AuthLevel.Delete);
 		  System.Diagnostics.Process.Start(url);
 		}
 	}
