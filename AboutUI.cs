@@ -63,7 +63,7 @@ using Glade;
 		private void SetAboutInfo() {
       System.Text.StringBuilder strb = new System.Text.StringBuilder();
       strb.AppendLine();
-      strb.Append("Desktop based Flickr Organizer by Manish Rai Jain");
+      strb.Append("Desktop based Flickr Organizer by Manish Rai Jain.");
       strb.AppendLine();
       strb.AppendLine();
       strb.Append("Organize, upload, and download photos all through a single interface.");
