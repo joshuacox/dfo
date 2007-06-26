@@ -33,7 +33,7 @@ using Glade;
 		  
       Gdk.Pixbuf pixbuf = new Gdk.Pixbuf(DeskFlickrUI.ICON_PATH);
 		  logoimage.Pixbuf = pixbuf;
-		  dfolabel.Markup = "<span font_desc='Sans Bold 16'>Desktop Flickr Organizer</span>";
+		  dfolabel.Markup = "<span font_desc='Sans Bold 16'>Desktop Flickr Organizer v0.3</span>";
 		  
 		  notebook2.SetTabLabelText(notebook2.CurrentPageWidget, "About");
 		  notebook2.NextPage();
@@ -74,6 +74,11 @@ using Glade;
       strb.Append("\t dfo-users@groups.google.com");
       strb.AppendLine();
       strb.Append("\t http://groups.google.com/group/dfo-users");
+      strb.AppendLine();
+      strb.AppendLine();
+      strb.Append("Homepage: ");
+      strb.AppendLine();
+      strb.Append("\t http://code.google.com/p/dfo/");
       strb.AppendLine();
       strb.AppendLine();
       strb.AppendLine();
