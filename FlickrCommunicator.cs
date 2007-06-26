@@ -107,6 +107,7 @@ using FlickrNet;
 		  _isbusy = true;
 		  try {
         UpdateUIAboutConnection();
+  		  UpdateUploadStatus();
         UpdateStream();
   		  UpdateAlbums();
   		  foreach (Album a in PersistentInformation.GetInstance().GetAlbums()) {
@@ -126,10 +127,12 @@ using FlickrNet;
   		  
   		  SyncNewAlbumsToServer();
   		  SyncDirtyAlbumsToServer();
-  		  
+        Gtk.Application.Invoke (delegate {
+          DeskFlickrUI.GetInstance().UpdateToolBarButtons();
+        });
+        
   		  CheckPhotosToDownload();
   		  CheckPhotosToUpload();
-  		  UpdateUploadStatus();
   		  // Flickr server never catches up with updates soon. So, we'll 
   		  // do all the album updates required by photo deletion on our side, 
   		  // and then just flush them to server. Hope they spread around by 
@@ -673,7 +676,7 @@ using FlickrNet;
 		    // Set the title to photo name. Set the photo to private mode for now.
 		    // Add a tag "dfo" to uploaded photo.
 		    string photoid = flickrObj.UploadPicture(
-		        filename, finfo.Name, "Uploaded through Desktop Flickr Organizer",
+		        filename, finfo.Name, "Uploaded through Desktop Flickr Organizer.",
 		        "dfoupload", false, false, false);
 		    if (photoid == null) continue;
 		    

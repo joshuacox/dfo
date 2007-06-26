@@ -437,11 +437,12 @@ using Glade;
 		private string GetCol1Data(Photo p) {
       System.Text.StringBuilder pangoTitle = new System.Text.StringBuilder();
       pangoTitle.AppendFormat(
-          "<span font_desc='Times Bold 10'>{0}</span>", p.Title);
+          "<span font_desc='Times Bold 10'>{0}</span>", 
+          p.Title.Replace("&", "&amp;"));
       pangoTitle.AppendLine();
       pangoTitle.AppendFormat(
           "<span font_desc='Times Italic 10'>{0}</span>", 
-          p.Description);
+          p.Description.Replace("&", "&amp;"));
       return pangoTitle.ToString();
 		}
 		
@@ -560,24 +561,29 @@ using Glade;
     
 		public void SetRightTreeView() {
 		  Gtk.CellRendererText titleRenderer = new Gtk.CellRendererText();
-		  titleRenderer.WrapWidth = 400;
+		  titleRenderer.WrapWidth = 510;
 		  titleRenderer.WrapMode = Pango.WrapMode.Word;
 		  
 		  Gtk.CellRendererText tagRenderer = new Gtk.CellRendererText();
 		  tagRenderer.WrapWidth = 150;
 		  tagRenderer.WrapMode = Pango.WrapMode.Word;
 		  
+		  Gtk.CellRendererText viewableRenderer = new Gtk.CellRendererText();
+		  viewableRenderer.WrapWidth = 90;
+		  viewableRenderer.WrapMode = Pango.WrapMode.Word;
+		  
 		  Gtk.CellRendererText licenseRenderer = new Gtk.CellRendererText();
-		  licenseRenderer.WrapWidth = 200;
+		  licenseRenderer.WrapWidth = 140;
 		  licenseRenderer.WrapMode = Pango.WrapMode.Word;
 		  
 		  treeview2.AppendColumn("Thumbnail", new Gtk.CellRendererPixbuf(), "pixbuf", 0);
 		  treeview2.AppendColumn("Title/Description", titleRenderer, "markup", 1);
 		  treeview2.AppendColumn("Tags", tagRenderer, "markup", 2);
-		  treeview2.AppendColumn("Viewable", tagRenderer, "markup", 3);
+		  treeview2.AppendColumn("Viewable", viewableRenderer, "markup", 3);
 		  treeview2.AppendColumn("License", licenseRenderer, "markup", 4);
 		  treeview2.HeadersVisible = true;
 		  treeview2.Model = null;
+
 		  // Alternate rows have same color.
 		  treeview2.RulesHint = true;
 		  // Select multiple photos together.
