@@ -62,6 +62,9 @@ using Glade;
     EventBox eventbox3;
     
     [Glade.Widget]
+    EventBox eventbox4;
+    
+    [Glade.Widget]
     Label label11;
     
     [Glade.Widget]
@@ -87,6 +90,7 @@ using Glade;
     private static string IMAGE_DIR = System.IO.Path.Combine(BASE_DIR, "icons");
     public static string ICON_PATH = System.IO.Path.Combine(IMAGE_DIR, "Font-Book.ico");
     public static string THUMBNAIL_PATH = System.IO.Path.Combine(IMAGE_DIR, "FontBookThumbnail.png");
+    public static string SQTHUMBNAIL_PATH = System.IO.Path.Combine(IMAGE_DIR, "FontBookSquareThumbnail.png");
     public static string FLICKR_ICON = System.IO.Path.Combine(IMAGE_DIR, "flickr_logo.gif");
     
     private static DeskFlickrUI deskflickr = null;
@@ -101,8 +105,10 @@ using Glade;
     private ArrayList _albums;
     private ArrayList _photos;
     private ArrayList _tags;
+    private ArrayList _pools;
     // Keep track of photos who are modified both here, and in the server.
     private ArrayList _conflictedphotos;
+    private Gdk.Pixbuf _nophotothumbnail;
     
     private int leftcurselectedindex;
     private int selectedtab;
@@ -126,8 +132,9 @@ using Glade;
 		  _albums = new ArrayList();
 		  _photos = new ArrayList();
 		  _tags = new ArrayList();
+		  _pools = new ArrayList();
 		  _conflictedphotos = new ArrayList();
-		  
+
 		  leftcurselectedindex = 0;
 		  selectedtab = 0;
       targets = new TargetEntry[] {
@@ -139,6 +146,11 @@ using Glade;
 		  Application.Init();
 		  Glade.XML gxml = new Glade.XML (null, "organizer.glade", "window1", null);
 		  gxml.Autoconnect (this);
+		  
+		  // Wao! Loading an image from file, didn't work when it was located
+		  // in object constructor i.e. DeskFlickrUI(). Shifting it to this
+		  // place, magically works!
+		  _nophotothumbnail = new Gdk.Pixbuf(SQTHUMBNAIL_PATH);
 		  
 		  // The value of stream button in this toolbar is being used by
 		  // other initializations. So, this should be positioned _before_ them.
@@ -171,7 +183,7 @@ using Glade;
 	  private string GetInfoAlbum(Album a) {
       System.Text.StringBuilder info = new System.Text.StringBuilder();
       info.AppendFormat(
-          "<span font_desc='Times Bold 10'>{0}</span>", a.Title);
+          "<span font_desc='Times Bold 10'>{0}</span>", a.Title.Replace("&", "&amp;"));
       info.AppendLine();
       info.AppendFormat(
           "<span font_desc='Times Bold 10'>{0} pics</span>", a.NumPics);
@@ -194,7 +206,7 @@ using Glade;
         
         Photo primaryPhoto = PersistentInformation.GetInstance().
             GetPhoto(a.PrimaryPhotoid);
-        Gdk.Pixbuf thumbnail = null;
+        Gdk.Pixbuf thumbnail = _nophotothumbnail;
         if (primaryPhoto != null) {
           thumbnail = primaryPhoto.Thumbnail;
         }
@@ -224,11 +236,15 @@ using Glade;
     }
     
     private string GetInfoTag(string tag) {
+      int numpics = PersistentInformation.GetInstance().GetCountPhotosForTag(tag);
+      return GetInfoTag(tag, numpics.ToString());
+    }
+    
+    private string GetInfoTag(string tag, string numpics) {
       System.Text.StringBuilder info = new System.Text.StringBuilder();
       info.AppendFormat(
           "<span font_desc='Times Bold 10'>{0}</span>", tag);
       info.AppendLine();
-      int numpics = PersistentInformation.GetInstance().GetCountPhotosForTag(tag);
       info.AppendFormat(
           "<span font_desc='Times Bold 10'>{0} pics</span>", numpics);
       return info.ToString();
@@ -245,13 +261,16 @@ using Glade;
       this._tags.Clear();
       
       ArrayList treeiters = new ArrayList();
-      foreach (string tag in PersistentInformation.GetInstance().GetAllTags()) {
+      foreach (PersistentInformation.Entry entry in 
+                        PersistentInformation.GetInstance().GetAllTags()) {
+        string tag = entry.entry1;
+        string numpics = entry.entry2;
         Photo p = PersistentInformation.GetInstance().GetSinglePhotoForTag(tag);
-        Gdk.Pixbuf thumbnail = null;
+        Gdk.Pixbuf thumbnail = _nophotothumbnail;
         if (p != null) {
           thumbnail = p.Thumbnail;
         }
-        TreeIter curiter = tagStore.AppendValues(thumbnail, GetInfoTag(tag));
+        TreeIter curiter = tagStore.AppendValues(thumbnail, GetInfoTag(tag, numpics));
         treeiters.Add(curiter);
         // Now add the tag name to _tags.
         this._tags.Add(tag);
@@ -261,9 +280,52 @@ using Glade;
       treeview1.ShowAll();
     }
     
+    private string GetInfoPool(PersistentInformation.Entry entry) {
+      int numpics = PersistentInformation.GetInstance()
+                                         .GetPhotoidsForPool(entry.entry1).Count;
+      return GetInfoPool(entry, numpics);
+    }
+    
+    private string GetInfoPool(PersistentInformation.Entry entry, int numpics) {
+      System.Text.StringBuilder info = new System.Text.StringBuilder();
+      info.AppendFormat(
+          "<span font_desc='Times Bold 10'>{0}</span>", 
+          entry.entry2.Replace("&", "&amp;"));
+      info.AppendLine();
+      info.AppendFormat(
+          "<span font_desc='Times Bold 10'>{0} pics</span>", numpics);
+      return info.ToString();
+    }
+    
+    public void PopulatePools() {
+      UpdateFlameWindowLabel();
+      Gtk.ListStore poolStore = (Gtk.ListStore) treeview1.Model;
+      if (poolStore == null) {
+        poolStore = new Gtk.ListStore(typeof(Gdk.Pixbuf), typeof(String));
+      } else {
+        poolStore.Clear();
+      }
+      this._pools.Clear();
+      
+      ArrayList treeiters = new ArrayList();
+      foreach (PersistentInformation.Entry entry 
+                    in PersistentInformation.GetInstance().GetAllPools()) {
+        Photo p = PersistentInformation.GetInstance().GetSinglePhotoForPool(entry.entry1);
+        Gdk.Pixbuf thumbnail = _nophotothumbnail;
+        if (p != null) thumbnail = p.Thumbnail;
+        TreeIter curiter = poolStore.AppendValues(thumbnail, GetInfoPool(entry));
+        treeiters.Add(curiter);
+        this._pools.Add(entry);
+      }
+      treeview1.Model = poolStore;
+      DoSelection(treeiters);
+      treeview1.ShowAll();
+    }
+    
     public void RefreshLeftTreeView() {
       if (selectedtab == 0) PopulateAlbums();
       else if (selectedtab == 1) PopulateTags();
+      else if (selectedtab == 2) PopulatePools();
     }
     
     private void SetLeftTextView() {
@@ -367,6 +429,25 @@ using Glade;
 		    UpdatePhotos(selectedphotos);
 		    UpdateTagAtPath(path, (string) _tags[destindex]);
 		  }
+		  else if (selectedtab == 2) { // pools
+		    PersistentInformation.Entry entry = (PersistentInformation.Entry) _pools[destindex];
+		    string groupid = entry.entry1;
+		    foreach (TreePath photospath in treeview2.Selection.GetSelectedRows()) {
+		      TreePath childpath = filter.ConvertPathToChildPath(photospath);
+		      Photo photo = (Photo) _photos[childpath.Indices[0]];
+		      
+		      if (!PersistentInformation.GetInstance().HasPoolPhoto(photo.Id, groupid)) {
+		        PersistentInformation.GetInstance().InsertPhotoToPool(photo.Id, groupid);
+		        PersistentInformation.GetInstance().MarkPhotoAddedToPool(photo.Id, groupid, true);
+		      }
+		      else if (PersistentInformation.GetInstance()
+		                               .IsPhotoDeletedFromPool(photo.Id, groupid)) {
+		        PersistentInformation.GetInstance()
+		                             .MarkPhotoDeletedFromPool(photo.Id, groupid, false);
+		      }
+		    }
+		    UpdatePoolAtPath(path, entry);
+		  }
 		}
 		
 		private void UpdateAlbumAtPath(TreePath path, Album a) {
@@ -381,6 +462,21 @@ using Glade;
 		  TreeIter iter;
 		  tagStore.GetIter(out iter, path);
 		  tagStore.SetValue(iter, 1, GetInfoTag(tag));
+		}
+		
+		private void UpdatePoolAtPath(TreePath path, PersistentInformation.Entry entry) {
+		  ListStore poolStore = (ListStore) treeview1.Model;
+		  TreeIter iter;
+		  poolStore.GetIter(out iter, path);
+		  ArrayList photoids = PersistentInformation.GetInstance()
+                                         .GetPhotoidsForPool(entry.entry1);
+      poolStore.SetValue(iter, 1, GetInfoPool(entry, photoids.Count));
+      if (photoids.Count == 1) {
+        Gdk.Pixbuf thumbnail = _nophotothumbnail;
+        Photo p = PersistentInformation.GetInstance().GetPhoto((string) photoids[0]);
+        if (p != null) thumbnail = p.Thumbnail;
+        poolStore.SetValue(iter, 0, thumbnail);
+      }
 		}
 		
 		// This method is a general purpose method, meant to take of changes
@@ -421,7 +517,15 @@ using Glade;
         if (!streambutton.Active && !conflictbutton.Active) {
           photos = PersistentInformation.GetInstance().GetPhotosForTag(tag);
         }
+      } else if (selectedtab == 2) {
+        string groupid = 
+            ((PersistentInformation.Entry) _pools[leftcurselectedindex]).entry1;
+        textview2.Buffer.Text = "";
+        if (!streambutton.Active && !conflictbutton.Active) {
+          photos = PersistentInformation.GetInstance().GetPhotosForPool(groupid);
+        }
       }
+      
       if (!streambutton.Active && !conflictbutton.Active) {
         PopulatePhotosTreeView(photos);
       }
@@ -814,6 +918,12 @@ using Glade;
       eventbox2.Add(tagLabel);
       eventbox2.ButtonPressEvent += TagTabSelected;
       
+      Label poolLabel = new Label();
+      poolLabel.Markup = "<span foreground='white'>Pools</span>";
+      poolLabel.Angle = 90;
+      eventbox4.Add(poolLabel);
+      eventbox4.ButtonPressEvent += PoolTabSelected;
+      
       // Set the default tab.
       AlbumTabSelected(null, null);
 		}
@@ -831,6 +941,9 @@ using Glade;
 		  } else if (selectedtab == 1) {
 		    label11.Markup = 
 		        "<span style='italic'>Drop photos here to remove tag.</span>";
+		  } else if (selectedtab == 2) {
+		    label11.Markup = 
+		        "<span style='italic'>Drop photos here to remove from pool.</span>";
 		  } else {
 		    label11.Markup =
 		        "<span style='italic'>Wao! This almost never happens.</span>";
@@ -840,6 +953,7 @@ using Glade;
 		private void AlbumTabSelected(object o, EventArgs args) {
 		  eventbox1.ModifyBg(StateType.Normal, tabselectedcolor);
 		  eventbox2.ModifyBg(StateType.Normal, tabcolor);
+		  eventbox4.ModifyBg(StateType.Normal, tabcolor);
 		  selectedtab = 0;
 		  leftcurselectedindex = 0;
 		  PopulateAlbums();
@@ -848,10 +962,20 @@ using Glade;
 		private void TagTabSelected(object o, EventArgs args) {
 		  eventbox1.ModifyBg(StateType.Normal, tabcolor);
 		  eventbox2.ModifyBg(StateType.Normal, tabselectedcolor);
+		  eventbox4.ModifyBg(StateType.Normal, tabcolor);
 		  selectedtab = 1;
 		  leftcurselectedindex = 0;
 		  textview2.Buffer.Text = "";
 		  PopulateTags();
+		}
+		
+		private void PoolTabSelected(object o, EventArgs args) {
+			eventbox1.ModifyBg(StateType.Normal, tabcolor);
+		  eventbox2.ModifyBg(StateType.Normal, tabcolor);
+		  eventbox4.ModifyBg(StateType.Normal, tabselectedcolor);
+		  selectedtab = 2;
+		  leftcurselectedindex = 0;
+		  PopulatePools();
 		}
 		
 		public static DeskFlickrUI GetInstance() {
@@ -1159,13 +1283,28 @@ using Glade;
             PersistentInformation.GetInstance().DeleteAlbum(setid);
           }
         }
-      } else if (selectedtab == 1) { // tags
+      } 
+      else if (selectedtab == 1) { // tags
         string tag = (string) _tags[leftcurselectedindex];
         foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
 		      string photoid = GetPhoto(path).Id;
 		      PersistentInformation.GetInstance().DeleteTag(photoid, tag);
 		      PersistentInformation.GetInstance().SetPhotoDirty(photoid, true);
 		    }
+      }
+      else if (selectedtab == 2) {
+        PersistentInformation.Entry entry = 
+            (PersistentInformation.Entry) _pools[leftcurselectedindex];
+        string groupid = entry.entry1;
+        foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
+          string photoid = GetPhoto(path).Id;
+          if (PersistentInformation.GetInstance().IsPhotoAddedToPool(photoid, groupid)) {
+            PersistentInformation.GetInstance().DeletePhotoFromPool(photoid, groupid);
+          } else {
+            PersistentInformation.GetInstance()
+                                 .MarkPhotoDeletedFromPool(photoid, groupid, true);
+          }
+        }
       } // if else ends here.
       RefreshLeftTreeView();
     }

@@ -11,11 +11,12 @@ using Mono.Data.SqliteClient;
     private static PersistentInformation info = null;
 		private GConf.Client client;
 
-		private Random rand;
 		private readonly object _photolock;
 		private readonly object _albumlock;
 		private readonly object _setphotolock;
 		private readonly object _taglock;
+		private readonly object _poollock;
+		private readonly object _poolphotolock;
 		private readonly object _downloadlock;
 		private readonly object _uploadlock;
 		private readonly object _writelock;
@@ -70,7 +71,21 @@ using Mono.Data.SqliteClient;
 		    + " photoid varchar(25),\n"
 		    + " tag varchar(56)\n"
 		    + ");";
-		    
+		
+		private static string CREATE_POOL_TABLE =
+		    "create table pool (\n"
+		    + " groupid varchar(25) primary key,\n"
+		    + " title varchar(256)\n"
+		    + ");";
+		
+		private static string CREATE_POOL_PHOTO_TABLE =
+		    "create table poolphoto (\n"
+		    + "groupid varchar(25),\n"
+		    + "photoid varchar(25),\n"
+		    + "isadded integer default 0,\n"
+		    + "isdeleted integer default 0\n"
+		    + ");";
+		
 	  private static string CREATE_DOWNLOAD_TABLE =
 	      "create table download (\n"
 	      + " photoid varchar(25),\n"
@@ -82,13 +97,13 @@ using Mono.Data.SqliteClient;
         + " filename varchar(256)\n"
         + ");";
     
-    public class DownloadEntry {
-      public string photoid;
-      public string foldername;
+    public class Entry {
+      public string entry1;
+      public string entry2;
       
-      public DownloadEntry(string photoid, string foldername) {
-        this.photoid = photoid;
-        this.foldername = foldername;
+      public Entry(string entry1, string entry2) {
+        this.entry1 = entry1;
+        this.entry2 = entry2;
       }
     }
     
@@ -121,15 +136,24 @@ using Mono.Data.SqliteClient;
         AddIndex("create index itag1 on tag(photoid);");
         AddIndex("create index itag2 on tag(tag);");
       }
+      if (CreateTable(CREATE_POOL_TABLE)) {
+        AddIndex("create index ipool1 on pool(groupid);");
+      }
+      if (CreateTable(CREATE_POOL_PHOTO_TABLE)) {
+        AddIndex("create index ipoolphoto1 on poolphoto(groupid);");
+        AddIndex("create index ipoolphoto2 on poolphoto(photoid);");
+      }
+      
       CreateTable(CREATE_DOWNLOAD_TABLE);
       CreateTable(CREATE_UPLOAD_TABLE);
       
       client = new GConf.Client();
-      rand = new Random();
       _albumlock = new object();
       _photolock = new object();
       _setphotolock = new object();
       _taglock = new object();
+      _poollock = new object();
+      _poolphotolock = new object();
       _downloadlock = new object();
       _uploadlock = new object();
       _writelock = new object();
@@ -209,9 +233,7 @@ using Mono.Data.SqliteClient;
 		// Retrive the thumbnail of the photo.
 		public Gdk.Pixbuf GetThumbnail(string photoid) {
 		  try {
-		    FileStream fs = new FileStream(GetThumbnailPath(photoid), 
-		                                   FileMode.Open, FileAccess.Read);
-		    return new Gdk.Pixbuf(fs);
+		    return new Gdk.Pixbuf(GetThumbnailPath(photoid));
 		  } catch(Exception) {
 		    return null;
 		  }
@@ -228,9 +250,7 @@ using Mono.Data.SqliteClient;
 		// Retrive the small size image to be shown when editing of photos.
 		public Gdk.Pixbuf GetSmallImage(string photoid) {
 		  try {
-		    FileStream fs = new FileStream(GetSmallImagePath(photoid), 
-		                                   FileMode.Open, FileAccess.Read);
-		    return new Gdk.Pixbuf(fs);
+		    return new Gdk.Pixbuf(GetSmallImagePath(photoid));
 		  } catch(Exception) {
 		    return null;
 		  }
@@ -821,20 +841,21 @@ using Mono.Data.SqliteClient;
 		 */
 		public ArrayList GetAllTags() {
 		  lock (_taglock) {
-		  ArrayList tags = new ArrayList();
+		  ArrayList entries = new ArrayList();
 		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
       dbcon.Open();
 		  IDbCommand dbcmd = dbcon.CreateCommand();
-		  dbcmd.CommandText = "select distinct tag from tag order by tag;";
+		  dbcmd.CommandText = "select tag, count(photoid) from tag group by tag;";
 		  IDataReader reader = dbcmd.ExecuteReader();
 		  while(reader.Read()) {
-		    tags.Add(reader.GetString(0));
+		    string tag = reader.GetString(0);
+		    int numpics = reader.GetInt32(1);
+		    entries.Add(new Entry(tag, numpics.ToString()));
 		  }
 		  reader.Close();
 		  dbcmd.Dispose();
 		  dbcon.Close();
-		  tags.Sort();
-		  return tags;
+		  return entries;
 		  }
 		}
 		
@@ -887,9 +908,23 @@ using Mono.Data.SqliteClient;
 		}
 		
 		public Photo GetSinglePhotoForTag(string tag) {
-		  ArrayList photoids = GetPhotoIdsForTag(tag);
-		  int index = rand.Next(photoids.Count);
-		  return GetPhoto((string) photoids[index]);
+		  lock (_taglock) {
+		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
+      dbcon.Open();
+		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  dbcmd.CommandText = String.Format(
+		      "select photoid from tag where tag='{0}'"
+		      + " order by random() limit 1;", tag);
+		  IDataReader reader = dbcmd.ExecuteReader();
+		  string photoid = "";
+		  while(reader.Read()) {
+		    photoid = reader.GetString(0);
+		  }
+		  reader.Close();
+		  dbcmd.Dispose();
+		  dbcon.Close();
+		  return GetPhoto(photoid);
+		  }
 		}
 		
 		public ArrayList GetTags(string photoid) {
@@ -950,6 +985,204 @@ using Mono.Data.SqliteClient;
 		}
 		
 		/*
+		 * Pool retrieval and setting methods.
+		 */
+		public void InsertPool(string groupid, string title) {
+		  lock (_poollock) {
+		  RunNonQuery(String.Format(
+		      "insert into pool (groupid, title) values('{0}', '{1}');",
+		      groupid, title));
+		  }
+		}
+		
+		public void DeleteAllPools() {
+		  lock (_poollock) {
+		  RunNonQuery("delete from pool;");
+		  }
+		}
+		
+		// Returns arraylist of groupid, title entries.
+		public ArrayList GetAllPools() {
+		  lock (_poollock) {
+		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
+      dbcon.Open();
+      IDbCommand dbcmd = dbcon.CreateCommand();
+      dbcmd.CommandText = "select * from pool;";
+      IDataReader reader = dbcmd.ExecuteReader();
+      ArrayList pools = new ArrayList();
+      while (reader.Read()) {
+        string groupid = reader.GetString(0);
+        string title = reader.GetString(1);
+        pools.Add(new Entry(groupid, title));
+      }
+      reader.Close();
+      dbcmd.Dispose();
+      dbcon.Close();
+      return pools;
+		  }
+		}
+		
+		/*
+		 * Pool photos retrieval and setting methods.
+		 */
+		public bool HasPoolPhoto(string photoid, string groupid) {
+		  lock (_poolphotolock) {
+		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
+      dbcon.Open();
+		  IDbCommand dbcmd = dbcon.CreateCommand();
+		  dbcmd.CommandText = String.Format(
+		      "select * from poolphoto where groupid='{0}' and photoid='{1}';",
+		      groupid, photoid);
+      bool hasphoto = dbcmd.ExecuteReader().Read();
+      dbcmd.Dispose();
+      dbcon.Close();
+      return hasphoto;
+      }
+		}
+		
+	  public void InsertPhotoToPool(string photoid, string groupid) {
+	    lock (_poolphotolock) {
+	    RunNonQuery(String.Format(
+	        "insert into poolphoto (groupid, photoid) values ('{0}','{1}');",
+	        groupid, photoid));
+	    }
+	  }
+	  
+	  public void DeletePhotoFromPool(string photoid, string groupid) {
+	    lock (_poolphotolock) {
+	    RunNonQuery(String.Format(
+	        "delete from poolphoto where groupid='{0}' and photoid='{1}';", 
+	        groupid, photoid));
+	    }
+	  }
+	  
+	  public Photo GetSinglePhotoForPool(string groupid) {
+	    lock (_poolphotolock) {
+		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
+      dbcon.Open();
+      IDbCommand dbcmd = dbcon.CreateCommand();
+      dbcmd.CommandText = String.Format(
+          "select photoid from poolphoto where groupid='{0}' and isdeleted=0"
+          + " order by random() limit 1;", groupid);
+      IDataReader reader = dbcmd.ExecuteReader();
+      string photoid = "";
+      if (reader.Read()) {
+        photoid = reader.GetString(0);
+      }
+      reader.Close();
+      dbcmd.Dispose();
+      dbcon.Close();
+      return GetPhoto(photoid);
+	    }
+	  }
+	  
+	  public ArrayList GetPhotoidsForPool(string groupid) {
+	    lock (_poolphotolock) {
+		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
+      dbcon.Open();
+      IDbCommand dbcmd = dbcon.CreateCommand();
+      dbcmd.CommandText = String.Format(
+          "select photoid from poolphoto where groupid='{0}' and isdeleted=0;",
+          groupid);
+      IDataReader reader = dbcmd.ExecuteReader();
+      ArrayList photoids = new ArrayList();
+      while (reader.Read()) {
+        string photoid = reader.GetString(0);
+        photoids.Add(photoid);
+      }
+      reader.Close();
+      dbcmd.Dispose();
+      dbcon.Close();
+      return photoids;
+	    }
+	  }
+	  
+	  public ArrayList GetPhotosForPool(string groupid) {
+	    ArrayList photos = new ArrayList();
+	    foreach (string photoid in GetPhotoidsForPool(groupid)) {
+	      Photo p = GetPhoto(photoid);
+	      if (p != null) photos.Add(p);
+	    }
+	    return photos;
+	  }
+	  
+	  public bool IsPhotoAddedToPool(string photoid, string groupid) {
+	    lock (_poolphotolock) {
+	    return RunIsTrueQuery(String.Format(
+	        "select isadded from poolphoto where groupid='{0}' and photoid='{1}';",
+	        groupid, photoid));
+	    }
+	  }
+	  
+	  public void MarkPhotoAddedToPool(string photoid, string groupid, bool isadded) {
+	    lock (_poolphotolock) {
+	    int added = 0;
+	    if (isadded) added = 1;
+	    RunNonQuery(String.Format(
+	        "update poolphoto set isadded={0} where groupid='{1}' and photoid='{2}';",
+	        added, groupid, photoid));
+	    }
+	  }
+	  
+	  public ArrayList GetPhotosAddedToPools() {
+	    lock (_poolphotolock) {
+		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
+      dbcon.Open();
+      IDbCommand dbcmd = dbcon.CreateCommand();
+      dbcmd.CommandText = "select groupid,photoid from poolphoto where isadded=1;";
+      IDataReader reader = dbcmd.ExecuteReader();
+      ArrayList photos = new ArrayList();
+      while (reader.Read()) {
+        string groupid = reader.GetString(0);
+        string photoid = reader.GetString(1);
+        photos.Add(new Entry(groupid, photoid));
+      }
+      reader.Close();
+      dbcmd.Dispose();
+      dbcon.Close();
+      return photos;
+	    }
+	  }
+	  
+	  public bool IsPhotoDeletedFromPool(string photoid, string groupid) {
+	    lock (_poolphotolock) {
+	    return RunIsTrueQuery(String.Format(
+	        "select isdeleted from poolphoto where groupid='{0}' and photoid='{1}';",
+	        groupid, photoid));
+	    }
+	  }
+	  
+	  public void MarkPhotoDeletedFromPool(string photoid, string groupid, bool isdeleted) {
+	    lock (_poolphotolock) {
+	    int deleted = 0;
+	    if (isdeleted) deleted = 1;
+	    RunNonQuery(String.Format(
+	        "update poolphoto set isdeleted={0} where groupid='{1}' and photoid='{2}';",
+	        deleted, groupid, photoid));
+	    }
+	  }
+	  
+	  public ArrayList GetPhotosDeletedFromPools() {
+	    lock (_poolphotolock) {
+		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
+      dbcon.Open();
+      IDbCommand dbcmd = dbcon.CreateCommand();
+      dbcmd.CommandText = "select groupid,photoid from poolphoto where isdeleted=1;";
+      IDataReader reader = dbcmd.ExecuteReader();
+      ArrayList photos = new ArrayList();
+      while (reader.Read()) {
+        string groupid = reader.GetString(0);
+        string photoid = reader.GetString(1);
+        photos.Add(new Entry(groupid, photoid));
+      }
+      reader.Close();
+      dbcmd.Dispose();
+      dbcon.Close();
+      return photos;
+	    }
+	  }
+	  
+		/*
 		 * Download table methods.
 		 */
 		public void InsertEntryToDownload(string photoid, string foldername) {
@@ -975,11 +1208,11 @@ using Mono.Data.SqliteClient;
 		  }
 		}
 		
-		public void DeleteEntryFromDownload(DownloadEntry entry) {
+		public void DeleteEntryFromDownload(Entry entry) {
 		  lock (_downloadlock) {
 		  string query = String.Format(
 		      "delete from download where photoid='{0}' and foldername='{1}';", 
-		      entry.photoid, entry.foldername);
+		      entry.entry1, entry.entry2);
 		  RunNonQuery(query);
 		  }
 		}
@@ -995,7 +1228,7 @@ using Mono.Data.SqliteClient;
 		  while (reader.Read()) {
 		    string photoid = reader.GetString(0);
 		    string foldername = reader.GetString(1);
-		    DownloadEntry entry = new DownloadEntry(photoid, foldername);
+		    Entry entry = new Entry(photoid, foldername);
 		    downloadentries.Add(entry);
 		  }
 		  return downloadentries;
