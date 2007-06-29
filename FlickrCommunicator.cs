@@ -18,6 +18,7 @@ using FlickrNet;
     private bool _isbusy;
     private Flickr flickrObj;
     private System.Net.WebClient webclient;
+    private string _userid;
     
 		private FlickrCommunicator()
 		{
@@ -117,10 +118,11 @@ using FlickrNet;
   		      DeskFlickrUI.GetInstance().RefreshLeftTreeView();
   		    });
   		  }
+  		  UpdatePools();
   		  // Sync photos at the end. It takes time for the changes done to server
   		  // to propagate. If we keep these sync methods before updates, then
   		  // the changes would be synced to server, however, the server would
-  		  // respond back with the old ones to update methods. So, the application
+  		  // respond back with the old values to update methods. So, the application
   		  // would end up removing the changes, and only show them again at 
   		  // the next update.
   		  SyncDirtyPhotosToServer();
@@ -130,6 +132,8 @@ using FlickrNet;
         Gtk.Application.Invoke (delegate {
           DeskFlickrUI.GetInstance().UpdateToolBarButtons();
         });
+        SyncPhotosAddedToPools();
+        SyncPhotosDeletedFromPools();
         
   		  CheckPhotosToDownload();
   		  CheckPhotosToUpload();
@@ -494,10 +498,102 @@ using FlickrNet;
 		
 		private void UpdateUploadStatus() {
 		  FlickrNet.UserStatus userstatus = flickrObj.PeopleGetUploadStatus();
+		  _userid = userstatus.UserId;
 		  Gtk.Application.Invoke(delegate {
 		    DeskFlickrUI.GetInstance().SetUploadStatus(
 		        userstatus.BandwidthMax, userstatus.BandwidthUsed);
 		  });
+		}
+		
+		private void UpdatePools() {
+			Gtk.Application.Invoke (delegate {
+		    DeskFlickrUI.GetInstance().SetStatusLabel("Updating group pools...");
+        DeskFlickrUI.GetInstance().SetProgressBarText("");
+      });
+		  // Refresh all the pool entries in pool table. If the user has left
+		  // any group, it would be removed in this process.
+		  FlickrNet.MemberGroupInfo[] pools = flickrObj.GroupPoolGetGroups();
+		  PersistentInformation.GetInstance().DeleteAllPools();
+		  foreach (FlickrNet.MemberGroupInfo pool in pools) {
+		    PersistentInformation.GetInstance().InsertPool(pool.GroupId, pool.GroupName);
+		  }
+
+		  foreach (FlickrNet.MemberGroupInfo pool in pools) {
+		    Gtk.Application.Invoke (delegate {
+          DeskFlickrUI.GetInstance().SetStatusLabel("Updating pool " + pool.GroupName);
+        });
+		    ArrayList photoids = PersistentInformation.GetInstance().GetPhotoidsForPool(pool.GroupId);
+        bool alreadysetprogresslimit = false;
+		    int totalpages = 1;
+		    // Retrieve all the photos posted by the user.
+		    for (int curpage=1; curpage<=totalpages; curpage++) {
+		      FlickrNet.Photos photos;
+		      try {
+		        photos = flickrObj.GroupPoolGetPhotos(pool.GroupId, null, _userid,
+		            PhotoSearchExtras.None, 500, curpage);
+		      } catch (Exception) {
+		        // This exception is thrown when trying to parse totalpages, if
+		        // no photos are returned. Its a bug with FlickrNet library.
+		        totalpages = 0;
+		        continue;
+		      }
+		      if (!alreadysetprogresslimit) {
+		        Gtk.Application.Invoke (delegate {
+		          DeskFlickrUI.GetInstance().SetLimitsProgressBar((int) photos.TotalPhotos);
+		        });
+		      }
+		      totalpages = (int) photos.TotalPages;
+		      foreach (FlickrNet.Photo photo in photos.PhotoCollection) {
+		        if (photoids.Contains(photo.PhotoId)) photoids.Remove(photo.PhotoId);
+		        else {
+		          PersistentInformation.GetInstance().InsertPhotoToPool(photo.PhotoId, pool.GroupId);
+		        }
+		        DelegateIncrementProgressBar();
+		      }
+		    }
+		    // These are the photos which have been removed at the server side.
+		    // Also, the photos which haven't been yet added to the server, will
+		    // be present in the list. Don't delete them.
+		    foreach (string photoid in photoids) {
+		      if (PersistentInformation.GetInstance()
+		                               .IsPhotoAddedToPool(photoid, pool.GroupId)) {
+		        continue;
+		      }
+		      PersistentInformation.GetInstance().DeletePhotoFromPool(photoid, pool.GroupId);
+		    }
+		  }
+		}
+		
+		private void SyncPhotosAddedToPools() {
+		  ArrayList entries = PersistentInformation.GetInstance().GetPhotosAddedToPools();
+      Gtk.Application.Invoke (delegate {
+        DeskFlickrUI.GetInstance().SetStatusLabel("Syncing photos added to pools...");
+        DeskFlickrUI.GetInstance().SetLimitsProgressBar(entries.Count);
+      });
+		  foreach (PersistentInformation.Entry entry in entries) {
+		    // entry1 corresponds to groupid.
+		    // entry2 corresponds to photoid.
+		    flickrObj.GroupPoolAdd(entry.entry2, entry.entry1); //photoid, groupid
+		    PersistentInformation.GetInstance()
+		                         .MarkPhotoAddedToPool(entry.entry2, entry.entry1, false);
+		    DelegateIncrementProgressBar();
+		  }
+		}
+		
+		private void SyncPhotosDeletedFromPools() {
+		  ArrayList entries = PersistentInformation.GetInstance().GetPhotosDeletedFromPools();
+      Gtk.Application.Invoke (delegate {
+        DeskFlickrUI.GetInstance().SetStatusLabel("Syncing photos deleted from pools...");
+        DeskFlickrUI.GetInstance().SetLimitsProgressBar(entries.Count);
+      });
+		  foreach (PersistentInformation.Entry entry in entries) {
+		    string groupid = entry.entry1;
+		    string photoid = entry.entry2;
+		    flickrObj.GroupPoolRemove(photoid, groupid); //photoid, groupid
+		    PersistentInformation.GetInstance()
+		                         .MarkPhotoDeletedFromPool(photoid, groupid, false);
+		    DelegateIncrementProgressBar();
+		  }
 		}
 		
 		private void SyncDirtyPhotosToServer() {
@@ -613,13 +709,15 @@ using FlickrNet;
 		    DeskFlickrUI.GetInstance().SetStatusLabel("Downloading photos...");
 		    DeskFlickrUI.GetInstance().SetLimitsProgressBar(entries.Count);
 		  });
-		  foreach (PersistentInformation.DownloadEntry entry in entries) {
-		  	FlickrNet.Sizes photosizes = SafelyGetSizes(entry.photoid);
+		  foreach (PersistentInformation.Entry entry in entries) {
+				string photoid = entry.entry1;
+				string foldername = entry.entry2;
+		  	FlickrNet.Sizes photosizes = SafelyGetSizes(photoid);
 		  	if (photosizes == null) continue;
-		  	Photo p = PersistentInformation.GetInstance().GetPhoto(entry.photoid);
+		  	Photo p = PersistentInformation.GetInstance().GetPhoto(photoid);
       	Gtk.Application.Invoke (delegate {
       	  string label = String.Format(
-      	      "Downloading {0}... Saving to {1}", p.Title, entry.foldername);
+      	      "Downloading {0}... Saving to {1}", p.Title, foldername);
       	  DeskFlickrUI.GetInstance().SetStatusLabel(label);
 		    });
 
@@ -637,7 +735,7 @@ using FlickrNet;
 		    }
 		    string safetitle = p.Title.Replace("/", "");
 		    string filename = String.Format(
-		          "{0}/{1}_{2}.jpg", entry.foldername, safetitle, p.Id);
+		          "{0}/{1}_{2}.jpg", foldername, safetitle, p.Id);
         Utils.IfExistsDeleteFile(filename);
         try {
 		      webclient.DownloadFile(sourceurl, filename);

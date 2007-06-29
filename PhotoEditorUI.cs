@@ -90,7 +90,9 @@ using Glade;
 		  Glade.XML gxml = new Glade.XML (null, "organizer.glade", "window2", null);
 		  gxml.Autoconnect (this);
       _isconflictmode = conflictmode;
-
+      
+      _tags = new ArrayList();
+      
 		  window2.Title = "Edit information for " + selectedphotos.Count + " photos";
 		  window2.SetIconFromFile(DeskFlickrUI.ICON_PATH);
 		  notebook1.SetTabLabelText(notebook1.CurrentPageWidget, "Information");
@@ -150,12 +152,12 @@ using Glade;
       } else {
         EmbedCommonInformation();
       }
-      
+
 		  window2.ShowAll();
 		}
 		
 		public static void FireUp(ArrayList selectedphotos, bool conflictmode) {
-		  PhotoEditorUI editor = new PhotoEditorUI(selectedphotos, conflictmode);
+		  new PhotoEditorUI(selectedphotos, conflictmode);
 		}
 		
 	  private int GetIndexOfPrivacyBox(Photo p) {
@@ -225,9 +227,12 @@ using Glade;
 		
 		private void SetTagTreeView() {
 		  ListStore tagstore = new ListStore(typeof(string));
-		  _tags = PersistentInformation.GetInstance().GetAllTags();
-		  foreach(string tag in PersistentInformation.GetInstance().GetAllTags()) {
-		    int numpics = PersistentInformation.GetInstance().GetCountPhotosForTag(tag);
+		  _tags.Clear();
+		  foreach(PersistentInformation.Entry entry in 
+		                        PersistentInformation.GetInstance().GetAllTags()) {
+		    string tag = entry.entry1;
+		    string numpics = entry.entry2;
+		    _tags.Add(tag);
 		    tagstore.AppendValues(tag + "(" + numpics + ")");
 		  }
 		  iconview1.Model = tagstore;
