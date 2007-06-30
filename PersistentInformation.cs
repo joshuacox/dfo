@@ -26,6 +26,7 @@ using Mono.Data.SqliteClient;
 		private static string ORDERED_SETS_LIST = GCONF_APP_PATH + "/sets";
 		private static string DOWNLOAD_FOLDER = GCONF_APP_PATH + "/downloadfolder";
 		private static string UPLOAD_FILE = GCONF_APP_PATH + "/uploadfile";
+		private static string USER_NSID = GCONF_APP_PATH + "/userid";
 		
 		private static string HOME = System.IO.Path.Combine(
 		    System.Environment.GetEnvironmentVariable("HOME"), ".desktopflickr");
@@ -1001,6 +1002,25 @@ using Mono.Data.SqliteClient;
 		  }
 		}
 		
+		public string GetPoolTitle(string groupid) {
+		  lock (_poollock) {
+		  IDbConnection dbcon = (IDbConnection) new SqliteConnection(DB_PATH);
+      dbcon.Open();
+      IDbCommand dbcmd = dbcon.CreateCommand();
+      dbcmd.CommandText = String.Format(
+          "select title from pool where groupid='{0}';", groupid);
+      IDataReader reader = dbcmd.ExecuteReader();
+      string title = "";
+      if (reader.Read()) {
+        title = reader.GetString(0);
+      }
+      reader.Close();
+      dbcmd.Dispose();
+      dbcon.Close();
+      return title;
+		  }
+		}
+		
 		// Returns arraylist of groupid, title entries.
 		public ArrayList GetAllPools() {
 		  lock (_poollock) {
@@ -1382,6 +1402,21 @@ using Mono.Data.SqliteClient;
 		  }
 		  set {
 		    client.Set(ORDERED_SETS_LIST, value);
+		  }
+		}
+		
+		public string UserId {
+		  get {
+		    string userid;
+		    try {
+		      userid = (string) client.Get(USER_NSID);
+		    } catch (GConf.NoSuchKeyException) {
+		      userid = "";
+		    }
+		    return userid;
+		  }
+		  set {
+		    client.Set(USER_NSID, value);
 		  }
 		}
 	}

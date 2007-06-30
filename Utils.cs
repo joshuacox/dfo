@@ -1,6 +1,7 @@
 
 using System;
 using System.Collections;
+using System.Text.RegularExpressions;
 
 	public class Utils
 	{
@@ -47,5 +48,15 @@ using System.Collections;
       if (fileinfo.Exists) {
         fileinfo.Delete();
       }
+    }
+    
+    public static string EscapeForPango(string str) {
+      if (str == null)
+				return "";
+		  Regex r = new Regex("<[^>]+>");
+		  str = r.Replace(str, "");
+			str = str.Replace ("&", "&amp;");
+			str = str.Replace ("<", "&lt;");
+			return str;
     }
 	}

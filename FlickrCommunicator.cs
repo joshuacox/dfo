@@ -18,7 +18,6 @@ using FlickrNet;
     private bool _isbusy;
     private Flickr flickrObj;
     private System.Net.WebClient webclient;
-    private string _userid;
     
 		private FlickrCommunicator()
 		{
@@ -115,7 +114,9 @@ using FlickrNet;
   		    if (PersistentInformation.GetInstance().IsAlbumNew(a.SetId)) continue;
   		    UpdatePhotosForAlbum(a);
   		    Gtk.Application.Invoke (delegate {
-  		      DeskFlickrUI.GetInstance().RefreshLeftTreeView();
+  		      if (DeskFlickrUI.GetInstance().IsAlbumTabSelected()) {
+  		        DeskFlickrUI.GetInstance().RefreshLeftTreeView();
+  		      }
   		    });
   		  }
   		  UpdatePools();
@@ -132,8 +133,9 @@ using FlickrNet;
         Gtk.Application.Invoke (delegate {
           DeskFlickrUI.GetInstance().UpdateToolBarButtons();
         });
-        SyncPhotosAddedToPools();
+        
         SyncPhotosDeletedFromPools();
+        SyncPhotosAddedToPools();
         
   		  CheckPhotosToDownload();
   		  CheckPhotosToUpload();
@@ -146,6 +148,7 @@ using FlickrNet;
           DeskFlickrUI.GetInstance().RefreshLeftTreeView();
         });
   		} catch (Exception e) {
+  		  Console.WriteLine(e.Message);
   		  Console.WriteLine(e.StackTrace);
   		}
 		  _isbusy = false;
@@ -380,7 +383,8 @@ using FlickrNet;
 		    DeskFlickrUI.GetInstance().SetStatusLabel("Done");
 		    DeskFlickrUI.GetInstance().SetValueProgressBar(0);
 		    DeskFlickrUI.GetInstance().SetProgressBarText("Photo Sets Updated");
-		    DeskFlickrUI.GetInstance().PopulateAlbums();
+		    if (DeskFlickrUI.GetInstance().IsAlbumTabSelected()) 
+		        DeskFlickrUI.GetInstance().RefreshLeftTreeView();
 		    DeskFlickrUI.GetInstance().ShowAllInWindow();
 		  });
 		}
@@ -498,7 +502,7 @@ using FlickrNet;
 		
 		private void UpdateUploadStatus() {
 		  FlickrNet.UserStatus userstatus = flickrObj.PeopleGetUploadStatus();
-		  _userid = userstatus.UserId;
+		  PersistentInformation.GetInstance().UserId = userstatus.UserId;
 		  Gtk.Application.Invoke(delegate {
 		    DeskFlickrUI.GetInstance().SetUploadStatus(
 		        userstatus.BandwidthMax, userstatus.BandwidthUsed);
@@ -529,7 +533,8 @@ using FlickrNet;
 		    for (int curpage=1; curpage<=totalpages; curpage++) {
 		      FlickrNet.Photos photos;
 		      try {
-		        photos = flickrObj.GroupPoolGetPhotos(pool.GroupId, null, _userid,
+		        string userid = PersistentInformation.GetInstance().UserId;
+		        photos = flickrObj.GroupPoolGetPhotos(pool.GroupId, null, userid,
 		            PhotoSearchExtras.None, 500, curpage);
 		      } catch (Exception) {
 		        // This exception is thrown when trying to parse totalpages, if
@@ -559,6 +564,7 @@ using FlickrNet;
 		                               .IsPhotoAddedToPool(photoid, pool.GroupId)) {
 		        continue;
 		      }
+		      Console.WriteLine("Deleting photo: " + photoid + " " + pool.GroupId);
 		      PersistentInformation.GetInstance().DeletePhotoFromPool(photoid, pool.GroupId);
 		    }
 		  }
@@ -571,12 +577,33 @@ using FlickrNet;
         DeskFlickrUI.GetInstance().SetLimitsProgressBar(entries.Count);
       });
 		  foreach (PersistentInformation.Entry entry in entries) {
-		    // entry1 corresponds to groupid.
-		    // entry2 corresponds to photoid.
-		    flickrObj.GroupPoolAdd(entry.entry2, entry.entry1); //photoid, groupid
-		    PersistentInformation.GetInstance()
-		                         .MarkPhotoAddedToPool(entry.entry2, entry.entry1, false);
 		    DelegateIncrementProgressBar();
+		    string groupid = entry.entry1;
+		    string photoid = entry.entry2;
+		    Photo p = PersistentInformation.GetInstance().GetPhoto(photoid);
+		    string pooltitle = PersistentInformation.GetInstance().GetPoolTitle(groupid);
+		    string operation = String.Format(
+		        "Adding '{0}' to group pool '{1}'.", p.Title, pooltitle);
+		    Console.WriteLine(operation);
+		    Gtk.Application.Invoke (delegate {
+		      DeskFlickrUI.GetInstance().SetStatusLabel(
+		          "Syncing photos added to pools... " + operation);
+		    });
+		    try {
+		      flickrObj.GroupPoolAdd(photoid, groupid); //photoid, groupid
+		    } catch (FlickrNet.FlickrException e) {
+		      if (e.Code == 3) {
+		        PersistentInformation.GetInstance().MarkPhotoAddedToPool(photoid, groupid, false);
+		      }
+		      else {
+		        Gtk.Application.Invoke (delegate {
+		          string message = operation + "\n Got response: " + e.Message;
+		          DeskFlickrUI.GetInstance().ShowMessageDialog(message);
+		        });
+		      }
+		      continue;
+		    }
+		    PersistentInformation.GetInstance().MarkPhotoAddedToPool(photoid, groupid, false);
 		  }
 		}
 		
@@ -587,12 +614,34 @@ using FlickrNet;
         DeskFlickrUI.GetInstance().SetLimitsProgressBar(entries.Count);
       });
 		  foreach (PersistentInformation.Entry entry in entries) {
+		    DelegateIncrementProgressBar();
 		    string groupid = entry.entry1;
 		    string photoid = entry.entry2;
-		    flickrObj.GroupPoolRemove(photoid, groupid); //photoid, groupid
-		    PersistentInformation.GetInstance()
-		                         .MarkPhotoDeletedFromPool(photoid, groupid, false);
-		    DelegateIncrementProgressBar();
+		    Photo p = PersistentInformation.GetInstance().GetPhoto(photoid);
+		    string pooltitle = PersistentInformation.GetInstance().GetPoolTitle(groupid);
+		    string operation = String.Format(
+		        "Deleting '{0}' from group pool '{1}'.", p.Title, pooltitle);
+		    Console.WriteLine(operation);
+		    Gtk.Application.Invoke (delegate {
+		      DeskFlickrUI.GetInstance().SetStatusLabel(
+		          "Syncing photos deleted from pools... " + operation);
+		    });
+		    try {
+		      flickrObj.GroupPoolRemove(photoid, groupid); //photoid, groupid
+		    } catch (FlickrNet.FlickrException e) {
+		      if (e.Code == 2) { // not present in the pool.
+		        Console.WriteLine("Not present in the pool");
+		        PersistentInformation.GetInstance().DeletePhotoFromPool(photoid, groupid);
+		      }
+		      else {
+		        Gtk.Application.Invoke (delegate {
+		          string message = operation + "\n Got response: " + e.Message;
+		          DeskFlickrUI.GetInstance().ShowMessageDialog(message);
+		        });
+		      }
+		      continue;
+		    }
+		    PersistentInformation.GetInstance().DeletePhotoFromPool(photoid, groupid);
 		  }
 		}
 		
@@ -774,7 +823,8 @@ using FlickrNet;
 		    // Set the title to photo name. Set the photo to private mode for now.
 		    // Add a tag "dfo" to uploaded photo.
 		    string photoid = flickrObj.UploadPicture(
-		        filename, finfo.Name, "Uploaded through Desktop Flickr Organizer.",
+		        filename, finfo.Name, 
+		        "Uploaded through <a href='http://code.google.com/p/dfo'>Desktop Flickr Organizer</a>.",
 		        "dfoupload", false, false, false);
 		    if (photoid == null) continue;
 		    
