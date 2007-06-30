@@ -66,6 +66,12 @@ using Glade;
     [Glade.Widget]
     Button button5;
     
+    [Glade.Widget]
+    EventBox eventbox5;
+    
+    [Glade.Widget]
+    Label label14;
+    
     // Save and Close
     [Glade.Widget]
     Button button6;
@@ -76,6 +82,7 @@ using Glade;
     private ArrayList _tags;
     private ArrayList _selectedphotos;
     private int _curphotoindex;
+    private string _currenturl;
     
     // I haven't been able to figure out a way so that only the user
     // selection of combobox elements, would trigger the OnPrivacyChanged
@@ -152,7 +159,11 @@ using Glade;
       } else {
         EmbedCommonInformation();
       }
-
+      
+      eventbox5.ButtonPressEvent += OnLinkPressed;
+      eventbox5.EnterNotifyEvent += MouseOnLink;
+      eventbox5.LeaveNotifyEvent += MouseLeftLink;
+      
 		  window2.ShowAll();
 		}
 		
@@ -245,6 +256,34 @@ using Glade;
 		  return text;
 		}
 		
+		private void SetPhotoLink(string photoid) {
+		  string userid = PersistentInformation.GetInstance().UserId;
+		  if (photoid.Equals("") || userid.Equals("")) {
+		    _currenturl = "";
+		    label14.Text = "";
+		    return;
+		  }
+		  _currenturl = String.Format(
+		      "http://www.flickr.com/photos/{0}/{1}", userid, photoid);
+		  label14.Markup = "<span foreground='#666666' style='italic'>View in browser</span>";
+		}
+		
+		private void OnLinkPressed(object sender, EventArgs args) {
+		  if (_currenturl.Equals("")) return;
+		  System.Diagnostics.Process.Start(_currenturl);
+		}
+				
+		private void MouseOnLink(object sender, EnterNotifyEventArgs args) {
+		  if (_currenturl.Equals("")) return;
+		  label14.Markup = 
+		      "<span foreground='#666666' underline='low' style='italic'>View in browser</span>";
+		}
+		
+		private void MouseLeftLink(object sender, LeaveNotifyEventArgs args) {
+		  if (_currenturl.Equals("")) return;
+		  label14.Markup = "<span foreground='#666666' style='italic'>View in browser</span>";
+		}
+		
 		private void EmbedCommonInformation() {
       // Work upon the selected photos here.
       Photo firstphoto = ((DeskFlickrUI.SelectedPhoto) _selectedphotos[0]).photo;
@@ -279,6 +318,7 @@ using Glade;
 		  button4.Sensitive = false;
 		  label7.Text = "";
 		  label7.Sensitive = false;
+		  SetPhotoLink("");
 		}
 		
 		private void ApplyConflictTagToLine(int startline, int endline) {
@@ -333,6 +373,7 @@ using Glade;
 		  image3.Pixbuf = p.SmallImage;
 		  label7.Sensitive = true;
       SetTitleTopRight(p.Title);
+      SetPhotoLink(p.Id);
 		}
 		
 		private void SetTitleTopRight(string title) {

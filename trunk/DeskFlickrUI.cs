@@ -183,7 +183,8 @@ using Glade;
 	  private string GetInfoAlbum(Album a) {
       System.Text.StringBuilder info = new System.Text.StringBuilder();
       info.AppendFormat(
-          "<span font_desc='Times Bold 10'>{0}</span>", a.Title.Replace("&", "&amp;"));
+          "<span font_desc='Times Bold 10'>{0}</span>", 
+          Utils.EscapeForPango(a.Title));
       info.AppendLine();
       info.AppendFormat(
           "<span font_desc='Times Bold 10'>{0} pics</span>", a.NumPics);
@@ -288,9 +289,10 @@ using Glade;
     
     private string GetInfoPool(PersistentInformation.Entry entry, int numpics) {
       System.Text.StringBuilder info = new System.Text.StringBuilder();
+      string pooltitle = entry.entry2;
       info.AppendFormat(
           "<span font_desc='Times Bold 10'>{0}</span>", 
-          entry.entry2.Replace("&", "&amp;"));
+          Utils.EscapeForPango(pooltitle));
       info.AppendLine();
       info.AppendFormat(
           "<span font_desc='Times Bold 10'>{0} pics</span>", numpics);
@@ -320,6 +322,10 @@ using Glade;
       treeview1.Model = poolStore;
       DoSelection(treeiters);
       treeview1.ShowAll();
+    }
+    
+    public bool IsAlbumTabSelected() {
+      return selectedtab == 0;
     }
     
     public void RefreshLeftTreeView() {
@@ -542,11 +548,11 @@ using Glade;
       System.Text.StringBuilder pangoTitle = new System.Text.StringBuilder();
       pangoTitle.AppendFormat(
           "<span font_desc='Times Bold 10'>{0}</span>", 
-          p.Title.Replace("&", "&amp;"));
+          Utils.EscapeForPango(p.Title));
       pangoTitle.AppendLine();
       pangoTitle.AppendFormat(
           "<span font_desc='Times Italic 10'>{0}</span>", 
-          p.Description.Replace("&", "&amp;"));
+          Utils.EscapeForPango(p.Description));
       return pangoTitle.ToString();
 		}
 		
@@ -629,21 +635,19 @@ using Glade;
       }
       else if (conflictbutton.Active) {
         photos = new ArrayList();
-        foreach (string photoid in _conflictedphotos) {
-          Photo p = PersistentInformation.GetInstance().GetPhoto(photoid);
+        foreach (Photo src in _conflictedphotos) {
+          Photo p = PersistentInformation.GetInstance().GetPhoto(src.Id);
+          if (p == null) continue;
           photos.Add(p);
         }
       }
       else if (selectedtab == 0) {
         string setid = ((Album) _albums[leftcurselectedindex]).SetId;
-        photos = 
-            PersistentInformation.GetInstance().GetPhotosForAlbum(setid);
-        
+        photos = PersistentInformation.GetInstance().GetPhotosForAlbum(setid);
       }
       else if (selectedtab == 1) {
         string tag = (string) _tags[leftcurselectedindex];
-        photos =
-            PersistentInformation.GetInstance().GetPhotosForTag(tag);
+        photos = PersistentInformation.GetInstance().GetPhotosForTag(tag);
       }
       PopulatePhotosTreeView(photos);
     }
@@ -803,6 +807,7 @@ using Glade;
 	      // populate the tree with the ones that we have.
 	      foreach (Photo src in _conflictedphotos) {
 	        Photo p = PersistentInformation.GetInstance().GetPhoto(src.Id);
+	        if (p == null) continue;
 	        photos.Add(p);
 	      }
 	      PopulatePhotosTreeView(photos);
@@ -1200,6 +1205,10 @@ using Glade;
     
     private void PhotoDeletionHandler(string photoid) {
       PersistentInformation.GetInstance().SetPhotoForDeletion(photoid);
+      // Remove from conflicts if present.
+      RemoveServerPhoto(photoid);
+      
+      // Remove it from all the albums.
       foreach (Album album in PersistentInformation.GetInstance().GetAlbums()) {
         PersistentInformation.GetInstance().DeletePhotoFromAlbum(photoid, album.SetId);
         // Check if the photo is the primary photo in the  album, and replace
