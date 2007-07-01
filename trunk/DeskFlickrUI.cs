@@ -85,6 +85,7 @@ using Glade;
     [Glade.Widget]
     Entry entry5;
     
+    ToggleToolButton lockbutton;
     ToggleToolButton streambutton;
     ToggleToolButton conflictbutton;
     ToolButton syncbutton;
@@ -532,26 +533,26 @@ using Glade;
         textview2.Buffer = buf;
         textview2.ShowAll();
         // Set photos here
-        if (!streambutton.Active && !conflictbutton.Active) {
+        if (!streambutton.Active && !conflictbutton.Active && !lockbutton.Active) {
           photos = PersistentInformation.GetInstance().GetPhotosForAlbum(album.SetId);
         }
       }
       else if (selectedtab == 1) {
         string tag = (string) _tags[leftcurselectedindex];
         textview2.Buffer.Text = "";
-        if (!streambutton.Active && !conflictbutton.Active) {
+        if (!streambutton.Active && !conflictbutton.Active && !lockbutton.Active) {
           photos = PersistentInformation.GetInstance().GetPhotosForTag(tag);
         }
       } else if (selectedtab == 2) {
         string groupid = 
             ((PersistentInformation.Entry) _pools[leftcurselectedindex]).entry1;
         textview2.Buffer.Text = "";
-        if (!streambutton.Active && !conflictbutton.Active) {
+        if (!streambutton.Active && !conflictbutton.Active && !lockbutton.Active) {
           photos = PersistentInformation.GetInstance().GetPhotosForPool(groupid);
         }
       }
       
-      if (!streambutton.Active && !conflictbutton.Active) {
+      if (!streambutton.Active && !conflictbutton.Active && !lockbutton.Active) {
         PopulatePhotosTreeView(photos);
       }
 		}
@@ -806,8 +807,19 @@ using Glade;
 		  }
 		}
 		
+		private void OnLockButtonClicked(object o, EventArgs args) {
+		  if (lockbutton.Active) {
+		    streambutton.Active = false;
+		    conflictbutton.Active = false;
+		  } else {
+		    RefreshLeftTreeView();
+		  }
+		  if (lockbutton.Active) UpdateFlameWindowLabel();
+		}
+		
 		private void OnStreamButtonClicked(object o, EventArgs args) {
 		  if (streambutton.Active) {
+		    lockbutton.Active = false;
 		    conflictbutton.Active = false;
 		    ArrayList photos = PersistentInformation.GetInstance().GetAllPhotos();
 		    streambutton.Label = "Show Stream (" + photos.Count + ")";
@@ -820,6 +832,7 @@ using Glade;
 		
 		public void OnConflictButtonClicked(object o, EventArgs args) {
 		  if (conflictbutton.Active) {
+		    lockbutton.Active = false;
 		    streambutton.Active = false;
 	      ArrayList photos = new ArrayList();
 	      // Get the photoid from these source (server) photos, and 
@@ -899,6 +912,13 @@ using Glade;
 		  uploadbutton.Label = "Upload Photos";
 		  uploadbutton.Clicked += new EventHandler(OnUploadButtonClicked);
 		  toolbar1.Insert(uploadbutton, -1);
+		  
+		  lockbutton = new ToggleToolButton(Stock.DndMultiple);
+		  lockbutton.IsImportant = true;
+		  lockbutton.Sensitive = true;
+		  lockbutton.Label = "Lock View";
+		  lockbutton.Clicked += new EventHandler(OnLockButtonClicked);
+		  toolbar1.Insert(lockbutton, -1);
 		  
 		  streambutton = new ToggleToolButton(Stock.SelectAll);
 		  streambutton.IsImportant = true;
