@@ -27,6 +27,10 @@ using Mono.Data.SqliteClient;
 		private static string DOWNLOAD_FOLDER = GCONF_APP_PATH + "/downloadfolder";
 		private static string UPLOAD_FILE = GCONF_APP_PATH + "/uploadfile";
 		private static string USER_NSID = GCONF_APP_PATH + "/userid";
+		private static string HEIGHT = GCONF_APP_PATH + "/height";
+		private static string WIDTH = GCONF_APP_PATH + "/width";
+		private static string VPOSITION = GCONF_APP_PATH + "/vpos";
+		private static string HPOSITION = GCONF_APP_PATH + "/hpos";
 		
 		private static string HOME = System.IO.Path.Combine(
 		    System.Environment.GetEnvironmentVariable("HOME"), ".desktopflickr");
@@ -1417,6 +1421,66 @@ using Mono.Data.SqliteClient;
 		  }
 		  set {
 		    client.Set(USER_NSID, value);
+		  }
+		}
+		
+		public int WindowWidth {
+		  get {
+		    int width;
+		    try {
+		      width = (int) client.Get(WIDTH);
+		    } catch (GConf.NoSuchKeyException) {
+		      width = 0;
+		    }
+		    return width;
+		  }
+		  set {
+		    client.Set(WIDTH, value);
+		  }
+		}
+		
+		public int WindowHeight {
+		  get {
+		    int height;
+		    try {
+		      height = (int) client.Get(HEIGHT);
+		    } catch (GConf.NoSuchKeyException) {
+		      height = 0;
+		    }
+		    return height;
+		  }
+		  set {
+		    client.Set(HEIGHT, value);
+		  }
+		}
+		
+		public int VerticalPosition {
+		  get {
+		    int vposition;
+		    try {
+		      vposition = (int) client.Get(VPOSITION);
+		    } catch (GConf.NoSuchKeyException) {
+		      vposition = 0;
+		    }
+		    return vposition;
+		  }
+		  set {
+		    client.Set(VPOSITION, value);
+		  }
+		}
+		
+		public int HorizontalPosition {
+		  get {
+		    int hposition;
+		    try {
+		      hposition = (int) client.Get(HPOSITION);
+		    } catch (GConf.NoSuchKeyException) {
+		      hposition = 0;
+		    }
+		    return hposition;
+		  }
+		  set {
+		    client.Set(HPOSITION, value);
 		  }
 		}
 	}

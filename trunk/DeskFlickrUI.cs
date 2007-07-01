@@ -47,6 +47,12 @@ using Glade;
     TextView textview2;
     
     [Glade.Widget]
+    VPaned vpaned1;
+    
+    [Glade.Widget]
+    HPaned hpaned1;
+    
+    [Glade.Widget]
     Toolbar toolbar1;
     
     [Glade.Widget]
@@ -176,9 +182,22 @@ using Glade;
 		  // Set window properties
 		  window1.SetIconFromFile(ICON_PATH);
 		  window1.DeleteEvent += OnWindowDeleteEvent;
+		  RestoreWindow();
 		  window1.ShowAll();
 		  Application.Run();
 		}
+	  
+	  private void RestoreWindow() {
+		  int height = PersistentInformation.GetInstance().WindowHeight;
+		  int width = PersistentInformation.GetInstance().WindowWidth;
+		  if (width != 0 && height != 0) window1.Resize(width, height);
+		  
+		  int vpos = PersistentInformation.GetInstance().VerticalPosition;
+		  if (vpos != 0) vpaned1.Position = vpos;
+		  
+		  int hpos = PersistentInformation.GetInstance().HorizontalPosition;
+		  if (hpos != 0) hpaned1.Position = hpos;
+	  }
 	  
 	  private string GetInfoAlbum(Album a) {
       System.Text.StringBuilder info = new System.Text.StringBuilder();
@@ -1094,9 +1113,20 @@ using Glade;
   	    md.Destroy();
   	  }
   	  if (result == ResponseType.Yes) {
+  	    StoreWindowSize();  
   	    if (_connthread != null) _connthread.Abort();
   		  Application.Quit ();
   		}
+		}
+		
+		private void StoreWindowSize() {
+      int width;
+		  int height;
+		  window1.GetSize(out width, out height);
+		  PersistentInformation.GetInstance().WindowWidth = width;
+		  PersistentInformation.GetInstance().WindowHeight = height;
+		  PersistentInformation.GetInstance().VerticalPosition = vpaned1.Position;
+		  PersistentInformation.GetInstance().HorizontalPosition = hpaned1.Position;
 		}
 		
 		// Connect the Signals defined in Glade
