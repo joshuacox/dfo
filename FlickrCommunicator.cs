@@ -564,7 +564,6 @@ using FlickrNet;
 		                               .IsPhotoAddedToPool(photoid, pool.GroupId)) {
 		        continue;
 		      }
-		      Console.WriteLine("Deleting photo: " + photoid + " " + pool.GroupId);
 		      PersistentInformation.GetInstance().DeletePhotoFromPool(photoid, pool.GroupId);
 		    }
 		  }
@@ -584,7 +583,6 @@ using FlickrNet;
 		    string pooltitle = PersistentInformation.GetInstance().GetPoolTitle(groupid);
 		    string operation = String.Format(
 		        "Adding '{0}' to group pool '{1}'.", p.Title, pooltitle);
-		    Console.WriteLine(operation);
 		    Gtk.Application.Invoke (delegate {
 		      DeskFlickrUI.GetInstance().SetStatusLabel(
 		          "Syncing photos added to pools... " + operation);
@@ -621,7 +619,6 @@ using FlickrNet;
 		    string pooltitle = PersistentInformation.GetInstance().GetPoolTitle(groupid);
 		    string operation = String.Format(
 		        "Deleting '{0}' from group pool '{1}'.", p.Title, pooltitle);
-		    Console.WriteLine(operation);
 		    Gtk.Application.Invoke (delegate {
 		      DeskFlickrUI.GetInstance().SetStatusLabel(
 		          "Syncing photos deleted from pools... " + operation);
@@ -630,7 +627,6 @@ using FlickrNet;
 		      flickrObj.GroupPoolRemove(photoid, groupid); //photoid, groupid
 		    } catch (FlickrNet.FlickrException e) {
 		      if (e.Code == 2) { // not present in the pool.
-		        Console.WriteLine("Not present in the pool");
 		        PersistentInformation.GetInstance().DeletePhotoFromPool(photoid, groupid);
 		      }
 		      else {
