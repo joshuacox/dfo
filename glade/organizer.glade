@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE glade-interface SYSTEM "glade-2.0.dtd">
-<!--Generated with glade3 3.2.0 on Sun Jul  1 05:13:09 2007 by mann@tuxmann-->
+<!--Generated with glade3 3.2.0 on Mon Jul  2 02:12:30 2007 by mann@tuxmann-->
 <glade-interface>
   <widget class="GtkWindow" id="window1">
     <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
@@ -250,30 +250,15 @@
                   </widget>
                   <packing>
                     <property name="expand">False</property>
+                    <property name="fill">False</property>
                     <property name="position">5</property>
                   </packing>
                 </child>
                 <child>
-                  <widget class="GtkLayout" id="layout13">
-                    <property name="height_request">100</property>
-                    <property name="visible">True</property>
-                    <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
-                  </widget>
-                  <packing>
-                    <property name="expand">False</property>
-                    <property name="position">6</property>
-                  </packing>
+                  <placeholder/>
                 </child>
                 <child>
-                  <widget class="GtkLayout" id="layout14">
-                    <property name="height_request">100</property>
-                    <property name="visible">True</property>
-                    <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
-                  </widget>
-                  <packing>
-                    <property name="expand">False</property>
-                    <property name="position">7</property>
-                  </packing>
+                  <placeholder/>
                 </child>
               </widget>
               <packing>
@@ -295,15 +280,18 @@
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
+                <property name="position">300</property>
+                <property name="position_set">True</property>
                 <child>
                   <widget class="GtkVPaned" id="vpaned1">
                     <property name="width_request">300</property>
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
+                    <property name="position">400</property>
+                    <property name="position_set">True</property>
                     <child>
                       <widget class="GtkScrolledWindow" id="scrolledwindow1">
-                        <property name="height_request">400</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
@@ -318,15 +306,18 @@
                           </widget>
                         </child>
                       </widget>
+                      <packing>
+                        <property name="resize">False</property>
+                      </packing>
                     </child>
                     <child>
                       <widget class="GtkScrolledWindow" id="scrolledwindow5">
-                        <property name="height_request">100</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="events">GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK</property>
-                        <property name="hscrollbar_policy">GTK_POLICY_AUTOMATIC</property>
+                        <property name="hscrollbar_policy">GTK_POLICY_NEVER</property>
                         <property name="vscrollbar_policy">GTK_POLICY_AUTOMATIC</property>
+                        <property name="shadow_type">GTK_SHADOW_IN</property>
                         <child>
                           <widget class="GtkTextView" id="textview2">
                             <property name="visible">True</property>
@@ -335,8 +326,14 @@
                           </widget>
                         </child>
                       </widget>
+                      <packing>
+                        <property name="resize">False</property>
+                      </packing>
                     </child>
                   </widget>
+                  <packing>
+                    <property name="resize">False</property>
+                  </packing>
                 </child>
                 <child>
                   <widget class="GtkVBox" id="vbox8">
