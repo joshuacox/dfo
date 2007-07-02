@@ -167,6 +167,14 @@ using Glade;
 		  // Set Text for the label
 		  label1.Text = "Desktop Flickr Organizer";
       label12.Markup = "<span weight='bold'>Search: </span>";
+
+      // Set Flames window label size.
+      label11.Wrap = true;
+      int height;
+      int width;
+      eventbox3.GetSizeRequest(out width, out height); 
+      label11.SetSizeRequest(width, height);
+      
       entry5.Changed += OnFilterEntryChanged;
 		  
 		  SetLeftTextView();
@@ -899,20 +907,6 @@ using Glade;
 		  editbutton.Clicked += new EventHandler(OnEditButtonClicked);
 		  toolbar1.Insert(editbutton, -1);
 		  
-		  ToolButton downloadbutton = new ToolButton(Stock.SortDescending);
-		  downloadbutton.IsImportant = true;
-		  downloadbutton.Sensitive = true;
-		  downloadbutton.Label = "Download Photos";
-		  downloadbutton.Clicked += new EventHandler(OnDownloadButtonClicked);
-		  toolbar1.Insert(downloadbutton, -1);
-		  
-		  ToolButton uploadbutton = new ToolButton(Stock.SortAscending);
-		  uploadbutton.IsImportant = true;
-		  uploadbutton.Sensitive = true;
-		  uploadbutton.Label = "Upload Photos";
-		  uploadbutton.Clicked += new EventHandler(OnUploadButtonClicked);
-		  toolbar1.Insert(uploadbutton, -1);
-		  
 		  lockbutton = new ToggleToolButton(Stock.DndMultiple);
 		  lockbutton.IsImportant = true;
 		  lockbutton.Sensitive = true;
@@ -933,7 +927,20 @@ using Glade;
 		  conflictbutton.Label = "Conflicts";
 		  conflictbutton.Clicked += new EventHandler(OnConflictButtonClicked);
 		  toolbar1.Insert(conflictbutton, -1);
-		  UpdateToolBarButtons();
+		  
+		  ToolButton downloadbutton = new ToolButton(Stock.SortDescending);
+		  downloadbutton.IsImportant = true;
+		  downloadbutton.Sensitive = true;
+		  downloadbutton.Label = "Download Photos";
+		  downloadbutton.Clicked += new EventHandler(OnDownloadButtonClicked);
+		  toolbar1.Insert(downloadbutton, -1);
+		  
+		  ToolButton uploadbutton = new ToolButton(Stock.SortAscending);
+		  uploadbutton.IsImportant = true;
+		  uploadbutton.Sensitive = true;
+		  uploadbutton.Label = "Upload Photos";
+		  uploadbutton.Clicked += new EventHandler(OnUploadButtonClicked);
+		  toolbar1.Insert(uploadbutton, -1);
 		  
 		  syncbutton = new ToolButton(Stock.Refresh);
 		  syncbutton.IsImportant = true;
@@ -941,6 +948,10 @@ using Glade;
 		  syncbutton.Label = "Sync Now";
 		  syncbutton.Clicked += new EventHandler(ConnectionHandler);
 		  toolbar1.Insert(syncbutton, -1);
+		  
+		  // Update the stream and conflict buttons with their respective number
+		  // of photos.
+		  UpdateToolBarButtons();
 		}
 		  	
   	public void UpdateToolBarButtons() {
@@ -1103,7 +1114,7 @@ using Glade;
     private void OnAddNewSetEvent(object sender, EventArgs args) {
       if (treeview2.Selection.CountSelectedRows() == 0) {
         ShowMessageDialog("Please select a photo to be used as primary photo"
-  	        + " for the album. You can change the primary photo later as well.");
+  	        + " for the new Photo Set. You can change the primary photo later as well.");
   	    return;
       }
       
