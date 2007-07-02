@@ -25,7 +25,6 @@
     <File name="./Album.cs" subtype="Code" buildaction="Compile" />
     <File name="./Photo.cs" subtype="Code" buildaction="Compile" />
     <File name="./PhotoEditorUI.cs" subtype="Code" buildaction="Compile" />
-    <File name="./Tag.cs" subtype="Code" buildaction="Compile" />
     <File name="./Utils.cs" subtype="Code" buildaction="Compile" />
     <File name="./AlbumEditorUI.cs" subtype="Code" buildaction="Compile" />
     <File name="./AboutUI.cs" subtype="Code" buildaction="Compile" />

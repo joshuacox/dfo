@@ -97,6 +97,7 @@ using Glade;
 		  strb.Append("Font Book logo by AveTenebrae (Laurent Baumann)");
 		  strb.AppendLine();
 		  strb.Append("\t http://ave.ambitiouslemon.com");
+		  strb.AppendLine();
 		  attribtextview.Buffer.Text = strb.ToString();
 		}
 	}
