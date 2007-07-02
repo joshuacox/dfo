@@ -33,7 +33,7 @@ using Glade;
 		  
       Gdk.Pixbuf pixbuf = new Gdk.Pixbuf(DeskFlickrUI.ICON_PATH);
 		  logoimage.Pixbuf = pixbuf;
-		  dfolabel.Markup = "<span font_desc='Sans Bold 16'>Desktop Flickr Organizer v0.3</span>";
+		  dfolabel.Markup = "<span font_desc='Sans Bold 16'>Desktop Flickr Organizer v0.4</span>";
 		  
 		  notebook2.SetTabLabelText(notebook2.CurrentPageWidget, "About");
 		  notebook2.NextPage();
