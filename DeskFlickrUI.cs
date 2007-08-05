@@ -166,6 +166,8 @@ using Glade;
     
     private Thread _connthread;
     private Thread _populatephotosthread;
+    private Thread _searchwaitthread;
+    private bool _busysearching;
     
     public class SelectedPhoto {
       public Photo photo;
@@ -231,7 +233,7 @@ using Glade;
 		  // in object constructor i.e. DeskFlickrUI(). Shifting it to this
 		  // place, magically works!
 		  _nophotothumbnail = new Gdk.Pixbuf(SQTHUMBNAIL_PATH);
-		  
+      
 		  tips = new Tooltips();
 		  
 		  // Popup upload window, and label box.
@@ -909,6 +911,9 @@ using Glade;
                && p.PrivacyInfo.IndexOf(query, comp) > -1) flag = true;
       else if (!checkbutton3.Active 
                && p.LicenseInfo.IndexOf(query, comp) > -1) flag = true;
+      else if (checkbutton4.Active
+               && PersistentInformation.GetInstance()
+                                       .HasCommentText(p.Id, query)) flag = true;
       return flag;
     }
     
@@ -921,8 +926,22 @@ using Glade;
     }
     
     private void OnFilterEntryChanged(object o, EventArgs args) {
-      filter.Refilter();
-      UpdatePhotoCountLabel();
+      if (_searchwaitthread != null && !_busysearching) _searchwaitthread.Abort();
+      _searchwaitthread = new Thread(new ThreadStart(DoWait));
+      _searchwaitthread.Start();
+    }
+    
+    private void DoWait() {
+      Thread.Sleep(500);
+      Thread searchthread = new Thread(new ThreadStart(DoFilterEntries));
+      searchthread.Start();
+    }
+    
+    private void DoFilterEntries() {
+      Gtk.Application.Invoke(delegate{
+        filter.Refilter();
+        UpdatePhotoCountLabel();
+      });
     }
     
     // This method is used only to refresh the photos in the right pane.
@@ -1037,7 +1056,6 @@ using Glade;
         int width;
         eventbox6.GetSizeRequest(out width, out height); 
         popuplabel.SetSizeRequest(width, height);
-        Console.WriteLine("Adding populabel");
         if (popuplabel.Parent == null) eventbox6.Add(popuplabel);
         eventbox6.ShowAll();
       } else {
@@ -1258,7 +1276,7 @@ using Glade;
 		    uploadbutton.Active = false;
 		    downloadbutton.Active = false;
 		    ArrayList photos = PersistentInformation.GetInstance().GetAllPhotos();
-		    SetPhotoCountTip(uploadbutton, photos.Count);
+		    SetPhotoCountTip(streambutton, photos.Count);
 		    PopulatePhotosTreeView(photos);
 		  } else if (IsNormalModeSelected()) {
 		    RefreshLeftTreeView();
@@ -1505,7 +1523,8 @@ using Glade;
 		        "<span style='italic'>Drop photos here to remove them from download list.</span>";
 		  } else if (selectedtab == 0) {
 		    label11.Markup = 
-		        "<span style='italic'>Drop photos here to remove from set.</span>";
+		        "<span style='italic'>Drop photos here to remove from set."
+		        + " Drop all photos here to delete the set entirely.</span>";
 		  } else if (selectedtab == 1) {
 		    label11.Markup = 
 		        "<span style='italic'>Drop photos here to remove tag.</span>";

@@ -110,6 +110,7 @@ using FlickrNet;
   		  UpdateUploadStatus();
         UpdateStream();
         PersistentInformation.GetInstance().DeleteAllOriginalPhotos();
+
   		  UpdateAlbums();
   		  foreach (Album a in PersistentInformation.GetInstance().GetAlbums()) {
   		    if (PersistentInformation.GetInstance().IsAlbumNew(a.SetId)) continue;
@@ -372,6 +373,7 @@ using FlickrNet;
 		          PersistentInformation.GetInstance().GetCommentsForPhoto(photoid)) {
 		        localcommentsdic.Add(comment.CommentId, comment);
 		      }
+		      
 		      foreach (Comment comment in comments) {
 		        if (localcommentsdic.ContainsKey(comment.CommentId)) {
 		          // Comment is present in db. But check if the comment html text
@@ -384,6 +386,12 @@ using FlickrNet;
 		          PersistentInformation.GetInstance().InsertComment(photoid, 
 		              comment.CommentId, comment.CommentHtml, comment.UserName);
 		        }
+		        localcommentsdic.Remove(comment.CommentId);
+		      }
+		      // The comments left in localcommentsdic are the ones which have
+		      // been deleted from the server.
+		      foreach (string commentid in localcommentsdic.Keys) {
+		        PersistentInformation.GetInstance().DeleteComment(photoid, commentid);
 		      }
 		    }
 		  } else { // There're no comments online. So, wipe out any if present in db.
@@ -840,10 +848,21 @@ using FlickrNet;
 		    DeskFlickrUI.GetInstance().SetLimitsProgressBar(blogentries.Count);
 		  });
 		  foreach (BlogEntry blogentry in blogentries) {
-		    if (flickrObj.BlogPostPhoto(blogentry.Blogid, blogentry.Photoid, 
-		        blogentry.Title, blogentry.Desc)) {
-		      PersistentInformation.GetInstance().DeleteEntryFromBlog(blogentry.Blogid, 
-		          blogentry.Photoid);
+		    string desc = blogentry.Desc 
+		        + "\nPosted using <a href='http://code.google.com/p/dfo/'>"
+		        + "Desktop Flickr Organizer</a>.";
+		    try {
+		      if (flickrObj.BlogPostPhoto(blogentry.Blogid, blogentry.Photoid, 
+		          blogentry.Title, desc)) {
+		        PersistentInformation.GetInstance().DeleteEntryFromBlog(
+		            blogentry.Blogid, blogentry.Photoid);
+		      }
+		    } catch (FlickrNet.FlickrException e) {
+	        Gtk.Application.Invoke (delegate {
+	          string operation = "Posting '" + blogentry.Title + "' to blog.";
+	          string message = operation + "\n Got response: " + e.Message;
+	          DeskFlickrUI.GetInstance().ShowMessageDialog(message);
+	        });
 		    }
 		    DelegateIncrementProgressBar();
 		  }
