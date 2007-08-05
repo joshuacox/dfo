@@ -41,8 +41,8 @@ using FlickrNet;
 		  
 		  textview1.Buffer.Text = "The application needs to be authorized"
 		      + " before it can read or modify your photos and data on Flickr."
-		      + " Authorization is a simple process which takes place in web"
-		      + " browser. When you're finished, return to this window to"
+		      + " Please go to the opened web browser window, to provide DFO"
+		      + " with the required permissions. When you're finished, return to this window to"
 		      + " complete authorization by clicking on Done.";
 		  
 		  button1.Clicked += new EventHandler(OnButtonPressDone);

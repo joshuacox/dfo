@@ -779,14 +779,24 @@ using Mono.Data.SqliteClient;
 		  }
 		}
 		
+		public bool HasCommentText(string photoid, string text) {
+		  lock (_commentlock) {
+		  return RunExistsQuery(String.Format(
+		      "select photoid from comment where photoid='{0}' and"
+		      + " (username like '%{1}%' or commenthtml like '%{1}%');",
+		      photoid, text));
+		  }
+		}
+		
 		public void InsertComment(string photoid, string commentid,
 		                          string commenthtml, string username) {
 		  lock (_commentlock) {
       string safecomment = commenthtml.Replace("'", "''");
+      string safeusername = username.Replace("'", "''");
       RunNonQuery(String.Format(
           "insert into comment (photoid, commentid, commenthtml, username)"
           + " values ('{0}','{1}','{2}','{3}');",
-          photoid, commentid, safecomment, username));
+          photoid, commentid, safecomment, safeusername));
 		  }
 		}
 		
@@ -921,8 +931,8 @@ using Mono.Data.SqliteClient;
 		  dbcon.Open();
 		  IDbCommand dbcmd = dbcon.CreateCommand();
 		  dbcmd.CommandText = String.Format(
-		      "select commentid, commenthtml, username from comment where photoid='{0}';",
-		      photoid);
+		      "select commentid, commenthtml, username from comment where photoid='{0}'"
+		      + " and isdeleted=0;", photoid);
 		  IDataReader reader = dbcmd.ExecuteReader();
 		  ArrayList comments = new ArrayList();
 		  while (reader.Read()) {
@@ -1986,7 +1996,7 @@ using Mono.Data.SqliteClient;
 		  get {
 		    string userid;
 		    try {
-		      userid = (string) client.Get(USER_NAME);
+		      userid = (string) client.Get(USER_NSID);
 		    } catch (GConf.NoSuchKeyException) {
 		      userid = "";
 		    }
