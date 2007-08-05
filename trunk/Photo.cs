@@ -31,6 +31,10 @@ using System.Collections;
 		}
 		
 		public Photo(Photo src) {
+      this.CopyContent(src);
+		}
+		
+		public void CopyContent(Photo src) {
 		  this.id = src.id;
 		  this.title = src.title;
 		  this.desc = src.desc;
@@ -43,6 +47,32 @@ using System.Collections;
 		  foreach (string t in src.tags) {
 		    this.tags.Add(t);
 		  }
+		}
+		
+		public bool isMetaDataEqual(Photo p) {
+		  if (p == null) return false;
+		  bool isequal = true;
+		  if (!this.id.Equals(p.id)) isequal = false;
+		  if (!this.title.Equals(p.title)) isequal = false;
+		  if (!this.desc.Equals(p.desc)) isequal = false;
+		  if (this.license != p.license) isequal = false;
+		  if (this.ispublic != p.ispublic) isequal = false;
+		  if (this.isfriend != p.isfriend) isequal = false;
+		  if (this.isfamily != p.isfamily) isequal = false;
+		  return isequal;
+		}
+		
+		public bool isTagsEqual(Photo p) {
+		  if (p == null) return false;
+		  return Utils.IsStringArrayEqual(this.tags, p.tags);
+		}
+		
+		public bool isEqual(Photo p) {
+		  if (p == null) return false;
+		  bool isequal = true;
+		  if (!this.isMetaDataEqual(p)) isequal = false;
+		  if (!this.isTagsEqual(p)) isequal = false;
+		  return isequal;
 		}
 		
 		public string LastUpdate {
@@ -64,6 +94,10 @@ using System.Collections;
 		      AddTag(t);
 		    }
 		  }
+		}
+		
+		public void SortTags() {
+		  tags.Sort();
 		}
 		
 		public bool IsSameTags(ArrayList dtags) {
@@ -164,7 +198,8 @@ using System.Collections;
         else if (license == 4) return "Attribution License";
         else if (license == 5) return "Attribution-ShareAlike License";
         else if (license == 6) return "Attribution-NoDerivs License";
-        else return "All Rights Reserved";
+        else if (license == 0) return "All Rights Reserved";
+        else return "";
       }
     }
     

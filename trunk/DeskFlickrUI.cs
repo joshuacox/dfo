@@ -71,6 +71,9 @@ using Glade;
     EventBox eventbox4;
     
     [Glade.Widget]
+    EventBox eventbox10;
+    
+    [Glade.Widget]
     Label label11;
     
     [Glade.Widget]
@@ -85,13 +88,50 @@ using Glade;
     [Glade.Widget]
     Entry entry5;
     
+    // Edited photos only check button
+    [Glade.Widget]
+    CheckButton checkbutton2;
+    
+    // Commented photos only check button
+    [Glade.Widget]
+    CheckButton checkbutton4;
+    
+    // Exclude Privacy and License check button
+    [Glade.Widget]
+    CheckButton checkbutton3;
+    
+    // Upload window
+    [Glade.Widget]
+    EventBox eventbox6;
+    Label popuplabel;
+    
+    // Upload button
+    [Glade.Widget]
+    MenuItem menuitem5;
+    
+    // Download button
+    [Glade.Widget]
+    MenuItem menuitem6;
+    
+    // Photo count
+    [Glade.Widget]
+    EventBox eventbox11;
+    
+    [Glade.Widget]
+    Label label19;
+    
     ToggleToolButton lockbutton;
     ToggleToolButton streambutton;
     ToggleToolButton conflictbutton;
+    ToggleToolButton uploadbutton;
+    ToggleToolButton downloadbutton;
     ToolButton syncbutton;
     
     // For toolbar2 on top left
     ToolButton connectbutton;
+    ToolButton uploadfilechooserbutton;
+    
+    Tooltips tips;
     
     private static string BASE_DIR = System.AppDomain.CurrentDomain.BaseDirectory;
     private static string IMAGE_DIR = System.IO.Path.Combine(BASE_DIR, "icons");
@@ -101,18 +141,19 @@ using Glade;
     public static string FLICKR_ICON = System.IO.Path.Combine(IMAGE_DIR, "flickr_logo.gif");
     
     private static DeskFlickrUI deskflickr = null;
-    private static Gdk.Color tabselectedcolor = new Gdk.Color(0x6A, 0x79, 0x7A);
-    private static Gdk.Color tabcolor = new Gdk.Color(0xCC, 0xCC, 0xB8);
+    public static Gdk.Color tabselectedcolor = new Gdk.Color(0x6A, 0x79, 0x7A);
+    public static Gdk.Color tabcolor = new Gdk.Color(0xCC, 0xCC, 0xB8);
     
     // Needed to store the order of albums and photos shown in
     // left and right panes respectively. These two variables used to
     // store just the ids. However, an afterthought suggests that if they 
-    // store the real photo and set objects, it would be more efficient. So,
+    // store the complete photo and set objects, it would be more efficient. So,
     // changing to that.
     private ArrayList _albums;
     private ArrayList _photos;
     private ArrayList _tags;
-    private ArrayList _pools;
+    private ArrayList _pools; // stores (poolid, pooltitle) entry.
+    private ArrayList _blogs; // stores (blogid, blogtitle) entry.
     // Keep track of photos who are modified both here, and in the server.
     private ArrayList _conflictedphotos;
     private Gdk.Pixbuf _nophotothumbnail;
@@ -124,6 +165,7 @@ using Glade;
     private TreeModelFilter filter;
     
     private Thread _connthread;
+    private Thread _populatephotosthread;
     
     public class SelectedPhoto {
       public Photo photo;
@@ -135,17 +177,48 @@ using Glade;
       }
     }
     
+    public class BlogSelectedPhoto : SelectedPhoto {
+      public BlogEntry blogentry;
+      
+      public BlogSelectedPhoto(Photo photo, BlogEntry blogentry, string path)
+          : base (photo, path) {
+        this.blogentry = blogentry;
+      }
+    }
+    
+    public enum ModeSelected {
+      NormalMode,
+      ConflictMode,
+      UploadMode,
+      BlogMode,
+      BlogAndConflictMode
+    }
+    		
+		public DeskFlickrUI.ModeSelected GetMode() {
+      DeskFlickrUI.ModeSelected mode = ModeSelected.NormalMode;
+      if (selectedtab == 3 && conflictbutton.Active) mode = ModeSelected.BlogAndConflictMode;
+      else if (uploadbutton.Active) mode = ModeSelected.UploadMode;
+      else if (conflictbutton.Active) mode = ModeSelected.ConflictMode;
+      else if (selectedtab == 3) mode = ModeSelected.BlogMode; 
+		  return mode;
+		}
+		
+		public Gdk.Pixbuf GetDFOThumbnail() {
+		  return _nophotothumbnail;
+		}
+		
 		private DeskFlickrUI() {
 		  _albums = new ArrayList();
 		  _photos = new ArrayList();
 		  _tags = new ArrayList();
 		  _pools = new ArrayList();
+		  _blogs = new ArrayList();
 		  _conflictedphotos = new ArrayList();
 
 		  leftcurselectedindex = 0;
 		  selectedtab = 0;
       targets = new TargetEntry[] {
-        new TargetEntry("text/plain", 0, 0)
+        new TargetEntry("text/uri-list", 0, 0)
       };
 		}
 		
@@ -159,6 +232,11 @@ using Glade;
 		  // place, magically works!
 		  _nophotothumbnail = new Gdk.Pixbuf(SQTHUMBNAIL_PATH);
 		  
+		  tips = new Tooltips();
+		  
+		  // Popup upload window, and label box.
+		  eventbox6.ModifyBg(StateType.Normal, tabcolor);
+		  
 		  // The value of stream button in this toolbar is being used by
 		  // other initializations. So, this should be positioned _before_ them.
 		  SetHorizontalToolBar();
@@ -167,15 +245,26 @@ using Glade;
 		  // Set Text for the label
 		  label1.Text = "Desktop Flickr Organizer";
       label12.Markup = "<span weight='bold'>Search: </span>";
-
+      label19.Text = "";
+      Gdk.Color greycolor = new Gdk.Color(0x7F, 0x7C, 0x7C);
+      eventbox11.ModifyBg(StateType.Normal, greycolor);
+      
       // Set Flames window label size.
       label11.Wrap = true;
       int height;
       int width;
       eventbox3.GetSizeRequest(out width, out height); 
       label11.SetSizeRequest(width, height);
+
+      tips.SetTip(eventbox3, "Flames Window", "Flames Window");
+      tips.Enable();
+      // Set upload window label.
+      popuplabel = new Label();
       
-      entry5.Changed += OnFilterEntryChanged;
+      entry5.Changed += new EventHandler(OnFilterEntryChanged);
+		  checkbutton2.Toggled += new EventHandler(OnFilterEntryChanged);
+		  checkbutton3.Toggled += new EventHandler(OnFilterEntryChanged);
+		  checkbutton4.Toggled += new EventHandler(OnFilterEntryChanged);
 		  
 		  SetLeftTextView();
 		  SetLeftTreeView();
@@ -352,6 +441,38 @@ using Glade;
       treeview1.ShowAll();
     }
     
+    private string GetInfoBlog(PersistentInformation.Entry entry) {
+      System.Text.StringBuilder info = new System.Text.StringBuilder();
+      string blogid = entry.entry1;
+      string blogtitle = entry.entry2;
+      info.AppendFormat("<span font_desc='Times Bold 10'>{0}</span>", blogtitle);
+      info.AppendLine();
+      int numentries = 
+          PersistentInformation.GetInstance().GetEntriesForBlog(blogid).Count;
+      info.AppendFormat("<span font_desc='Times Bold 10'>{0} entries</span>", numentries);
+      return info.ToString();
+    }
+    
+    private void PopulateBlogs() {
+      UpdateFlameWindowLabel();
+      Gtk.ListStore blogStore = (Gtk.ListStore) treeview1.Model;
+      if (blogStore == null)
+          blogStore = new Gtk.ListStore(typeof(Gdk.Pixbuf), typeof(String));
+      else blogStore.Clear();
+      this._blogs.Clear();
+      ArrayList treeiters = new ArrayList();
+      foreach (PersistentInformation.Entry entry
+                  in PersistentInformation.GetInstance().GetAllBlogs()) {
+        Gdk.Pixbuf thumbnail = DeskFlickrUI.GetInstance().GetDFOThumbnail();
+        TreeIter curiter = blogStore.AppendValues(thumbnail, GetInfoBlog(entry));
+        treeiters.Add(curiter);
+        this._blogs.Add(entry);
+      }
+      treeview1.Model = blogStore;
+      DoSelection(treeiters);
+      treeview1.ShowAll();
+    }
+    
     public bool IsAlbumTabSelected() {
       return selectedtab == 0;
     }
@@ -360,6 +481,7 @@ using Glade;
       if (selectedtab == 0) PopulateAlbums();
       else if (selectedtab == 1) PopulateTags();
       else if (selectedtab == 2) PopulatePools();
+      else if (selectedtab == 3) PopulateBlogs();
     }
     
     private void SetLeftTextView() {
@@ -388,7 +510,7 @@ using Glade;
       treeview1.Model = null;
       
       // Drag and drop mechanism
-      treeview1.EnableModelDragDest(targets, Gdk.DragAction.Copy);
+      Gtk.Drag.DestSet(treeview1, Gtk.DestDefaults.All, targets, Gdk.DragAction.Copy);
       treeview1.DragDataReceived += OnPhotoDraggedForAddition;
                        
       // Can use CursorChanged if need to get an event on every click.
@@ -410,11 +532,12 @@ using Glade;
 		  int destindex = path.Indices[0];
 		  
 		  if (selectedtab == 0) { // albums
+		    // TODO: Allow addition to sets.
+		    if (uploadbutton.Active) return; // Doesn't allow addition to sets yet.
 		    string setid = ((Album) _albums[destindex]).SetId;
 		    
 		    foreach (TreePath photospath in treeview2.Selection.GetSelectedRows()) {
-		      TreePath childpath = filter.ConvertPathToChildPath(photospath);
-		      string photoid = ((Photo) _photos[childpath.Indices[0]]).Id;
+          string photoid = GetPhoto(photospath).Id;
 		      bool exists = PersistentInformation.GetInstance()
 		                                         .HasAlbumPhoto(photoid, setid);
 		      if (exists) {
@@ -447,15 +570,27 @@ using Glade;
 		  else if (selectedtab == 1) { // tags
 		    ArrayList selectedphotos = new ArrayList();
 		    foreach (TreePath photospath in treeview2.Selection.GetSelectedRows()) {
-		      TreePath childpath = filter.ConvertPathToChildPath(photospath);
-		      Photo photo = (Photo) _photos[childpath.Indices[0]];
+		      Photo photo = GetPhoto(photospath);
 		      string tag = (string) _tags[destindex];
-		      PersistentInformation.GetInstance().InsertTag(photo.Id, tag);
-		      PersistentInformation.GetInstance().SetPhotoDirty(photo.Id, true);
-		      
-		      Photo newphoto = new Photo(photo);
-		      newphoto.AddTag(tag);
-		      SelectedPhoto selphoto = new SelectedPhoto(newphoto, childpath.ToString());
+		      if (uploadbutton.Active) {
+		        photo.AddTag(tag);
+		        PersistentInformation.GetInstance().UpdateInfoForUploadPhoto(photo);
+		      }
+		      else {
+  		      // Check if the original version is stored in db. Allow for revert.
+  		      if (!PersistentInformation.GetInstance().HasOriginalPhoto(photo.Id)
+  		          && !PersistentInformation.GetInstance().IsPhotoDirty(photo.Id)) {
+  		        PersistentInformation.GetInstance().InsertOriginalPhoto(photo);
+  		      }
+  		      if (!PersistentInformation.GetInstance().HasTag(photo.Id, tag)) {
+  		        PersistentInformation.GetInstance().InsertTag(photo.Id, tag);
+  		        PersistentInformation.GetInstance().SetPhotoDirty(photo.Id, true);
+  		      }
+		      }
+
+		      photo.AddTag(tag);
+		      TreePath childpath = filter.ConvertPathToChildPath(photospath);
+		      SelectedPhoto selphoto = new SelectedPhoto(photo, childpath.ToString());
 		      selectedphotos.Add(selphoto);
 		    }
 		    // UpdatePhotos will replace the old photos, with the new ones containing
@@ -464,12 +599,12 @@ using Glade;
 		    UpdateTagAtPath(path, (string) _tags[destindex]);
 		  }
 		  else if (selectedtab == 2) { // pools
+		    // TODO: Allow addition to pools.
+		    if (uploadbutton.Active) return; // Doesn't allow addition to sets yet.
 		    PersistentInformation.Entry entry = (PersistentInformation.Entry) _pools[destindex];
 		    string groupid = entry.entry1;
 		    foreach (TreePath photospath in treeview2.Selection.GetSelectedRows()) {
-		      TreePath childpath = filter.ConvertPathToChildPath(photospath);
-		      Photo photo = (Photo) _photos[childpath.Indices[0]];
-		      
+          Photo photo = GetPhoto(photospath);
 		      if (!PersistentInformation.GetInstance().HasPoolPhoto(photo.Id, groupid)) {
 		        PersistentInformation.GetInstance().InsertPhotoToPool(photo.Id, groupid);
 		        PersistentInformation.GetInstance().MarkPhotoAddedToPool(photo.Id, groupid, true);
@@ -481,6 +616,25 @@ using Glade;
 		      }
 		    }
 		    UpdatePoolAtPath(path, entry);
+		  }
+		  else if (selectedtab == 3) { // blogs
+		    if (uploadbutton.Active) return;
+		    PersistentInformation.Entry entry = (PersistentInformation.Entry) _blogs[destindex];
+		    string blogid = entry.entry1;
+		    ArrayList selectedphotos = new ArrayList();
+		    foreach (TreePath photospath in treeview2.Selection.GetSelectedRows()) {
+          Photo photo = GetPhoto(photospath);
+		      if (!PersistentInformation.GetInstance().HasBlogPhoto(blogid, photo.Id)) {
+		        BlogEntry blogentry = 
+		            new BlogEntry(blogid, photo.Id, photo.Title, photo.Description);
+		        PersistentInformation.GetInstance().InsertEntryToBlog(blogentry);
+		      }
+		      TreePath childpath = filter.ConvertPathToChildPath(photospath);
+		      SelectedPhoto selphoto = new SelectedPhoto(photo, childpath.ToString());
+		      selectedphotos.Add(selphoto);
+		    }
+		    UpdatePhotos(selectedphotos);
+		    UpdateBlogAtPath(path, entry);
 		  }
 		}
 		
@@ -505,12 +659,35 @@ using Glade;
 		  ArrayList photoids = PersistentInformation.GetInstance()
                                          .GetPhotoidsForPool(entry.entry1);
       poolStore.SetValue(iter, 1, GetInfoPool(entry, photoids.Count));
-      if (photoids.Count == 1) {
+      if (photoids.Count > 0) {
         Gdk.Pixbuf thumbnail = _nophotothumbnail;
         Photo p = PersistentInformation.GetInstance().GetPhoto((string) photoids[0]);
         if (p != null) thumbnail = p.Thumbnail;
         poolStore.SetValue(iter, 0, thumbnail);
       }
+		}
+		
+		private void UpdateBlogAtPath(TreePath path, PersistentInformation.Entry entry) {
+		  ListStore blogStore = (ListStore) treeview1.Model;
+		  TreeIter iter;
+		  blogStore.GetIter(out iter, path);
+		  blogStore.SetValue(iter, 1, GetInfoBlog(entry));
+		}
+		
+		private void UpdateLeftTextView(string title, string desc) {
+      TextBuffer buf = textview2.Buffer;
+      buf.Clear();
+     
+      // Set the buffer here.
+      buf.Text = "\n" + title + "\n\n" + desc;
+      TextIter start;
+      TextIter end;
+      start = buf.GetIterAtLine(1);
+      end = buf.GetIterAtLine(2);
+      buf.ApplyTag("headline", start, end);
+      buf.ApplyTag("paragraph", end, buf.EndIter);
+      textview2.Buffer = buf;
+      textview2.ShowAll();
 		}
 		
 		// This method is a general purpose method, meant to take of changes
@@ -520,47 +697,52 @@ using Glade;
       if (treepaths.Length > 0) {
         leftcurselectedindex = (treepaths[0]).Indices[0];
       } else return;
-
+      bool ismodebuttonactivated = streambutton.Active || conflictbutton.Active
+                                   || lockbutton.Active || uploadbutton.Active
+                                   || downloadbutton.Active;
       ArrayList photos = null;
-      if (selectedtab == 0) {
-        TextBuffer buf = textview2.Buffer;
-        buf.Clear();
+      if (selectedtab == 0) { // albums
         // It is obvious that there would be at least one album, because
         // otherwise left treeview model wouldn't be formed, and the user
         // would have nothing to click upon.
-        
         Album album = (Album) _albums[leftcurselectedindex];
-        // Set the buffer here.
-        buf.Text = "\n" + album.Title + "\n\n" + album.Desc;
-        TextIter start;
-        TextIter end;
-        start = buf.GetIterAtLine(1);
-        end = buf.GetIterAtLine(2);
-        buf.ApplyTag("headline", start, end);
-        buf.ApplyTag("paragraph", end, buf.EndIter);
-        textview2.Buffer = buf;
-        textview2.ShowAll();
+        UpdateLeftTextView(album.Title, album.Desc);
         // Set photos here
-        if (!streambutton.Active && !conflictbutton.Active && !lockbutton.Active) {
+        if (!ismodebuttonactivated) {
           photos = PersistentInformation.GetInstance().GetPhotosForAlbum(album.SetId);
         }
       }
-      else if (selectedtab == 1) {
+      else if (selectedtab == 1) { // tags
         string tag = (string) _tags[leftcurselectedindex];
-        textview2.Buffer.Text = "";
-        if (!streambutton.Active && !conflictbutton.Active && !lockbutton.Active) {
+        UpdateLeftTextView(tag, "");
+        UpdateTagAtPath(treepaths[0], tag);
+        if (!ismodebuttonactivated) {
           photos = PersistentInformation.GetInstance().GetPhotosForTag(tag);
         }
-      } else if (selectedtab == 2) {
-        string groupid = 
-            ((PersistentInformation.Entry) _pools[leftcurselectedindex]).entry1;
-        textview2.Buffer.Text = "";
-        if (!streambutton.Active && !conflictbutton.Active && !lockbutton.Active) {
+      } else if (selectedtab == 2) { // pools
+        PersistentInformation.Entry poolentry = (PersistentInformation.Entry) _pools[leftcurselectedindex];
+        string groupid = poolentry.entry1;
+        string grouptitle = poolentry.entry2;
+        UpdateLeftTextView(grouptitle, "");
+        if (!ismodebuttonactivated) {
           photos = PersistentInformation.GetInstance().GetPhotosForPool(groupid);
+        }
+      } else if (selectedtab == 3) { // blogs
+        PersistentInformation.Entry bentry = (PersistentInformation.Entry) _blogs[leftcurselectedindex];
+        string blogid = bentry.entry1;
+        string blogtitle = bentry.entry2;
+        UpdateLeftTextView(blogtitle, "");
+        photos = new ArrayList();
+        if (!ismodebuttonactivated) {
+          foreach (BlogEntry blogentry in 
+              PersistentInformation.GetInstance().GetEntriesForBlog(blogid)) {
+            Photo photo = PersistentInformation.GetInstance().GetPhoto(blogentry.Photoid);
+            photos.Add(photo);
+          }
         }
       }
       
-      if (!streambutton.Active && !conflictbutton.Active && !lockbutton.Active) {
+      if (!ismodebuttonactivated) {
         PopulatePhotosTreeView(photos);
       }
 		}
@@ -577,7 +759,31 @@ using Glade;
       pangoTitle.AppendFormat(
           "<span font_desc='Times Bold 10'>{0}</span>", 
           Utils.EscapeForPango(p.Title));
+      if (!uploadbutton.Active // Not an upload photo entry.
+          && PersistentInformation.GetInstance().IsPhotoDirty(p.Id)) {
+        pangoTitle.Append(
+            "<span font_desc='Times Bold 8' color='red'> [Edited]</span>");
+      }
+      if (!uploadbutton.Active
+          && PersistentInformation.GetInstance().IsPhotoBlogged(p.Id)) {
+        pangoTitle.Append(
+            "<span font_desc='Times Bold 8' color='#026600'> [Blog Post]</span>");
+      }
+      if (!uploadbutton.Active
+          && PersistentInformation.GetInstance().HasComment(p.Id)) {
+          // #937504 #A17F01
+        pangoTitle.Append(
+            "<span font_desc='Times Bold 8' color='#937504'> [Comments]</span>");
+      }
       pangoTitle.AppendLine();
+      if (!uploadbutton.Active
+          && PersistentInformation.GetInstance().IsDownloadEntryExists(p.Id)) {
+        string foldername = PersistentInformation.GetInstance().GetFolderNameForPhotoId(p.Id);
+        foldername = Utils.EscapeForPango(foldername);
+        pangoTitle.Append(
+            "<span font_desc='Times Bold 8' color='blue'>Download to: " + foldername + "</span>");
+        pangoTitle.AppendLine();
+      }
       pangoTitle.AppendFormat(
           "<span font_desc='Times Italic 10'>{0}</span>", 
           Utils.EscapeForPango(p.Description));
@@ -599,9 +805,34 @@ using Glade;
 		  return String.Format(
             "<span font_desc='Times 10'>{0}</span>", p.LicenseInfo);
 		}
+		    
+    private void SetLabelPopup(bool isactivated, string message) {
+      if (isactivated) {
+        popuplabel.Markup = "<span font_desc='Times Bold 12'>" + message + "</span>";
+        if (popuplabel.Parent == null) eventbox6.Add(popuplabel);
+        eventbox6.HeightRequest = 25;
+        eventbox6.ShowAll();
+      } else {
+        if (popuplabel.Parent != null) eventbox6.Remove(popuplabel);
+        eventbox6.HeightRequest = 0;
+      }
+    }
+
+		private void SetActivatePhotosTreeView(bool isactivated) {
+	    if (!isactivated) {
+	      SetLabelPopup(true, "Populating...");
+	      treeview2.Sensitive = false;
+	    } else {
+	      SetLabelPopup(false, "");
+	      treeview2.Sensitive = true;
+	    }
+		}
 		
-		public void PopulatePhotosTreeView(ArrayList photos) {
-		  _photos.Clear();
+		// To be run in a thread by PopulatePhotosTreeView method.
+		private void PopulateStore() {
+		  Gtk.Application.Invoke(delegate{
+		    SetActivatePhotosTreeView(false);
+		  });
 		  // Note that whatever change we do to photoStore, i.e. addition or
 		  // editing of entries, filter is triggered. So, we'll create a store
 		  // first, and then just assign this new store to the global photoStore.
@@ -609,16 +840,44 @@ using Glade;
 		                                 typeof(Gdk.Pixbuf), typeof(string),
 		                                 typeof(string), typeof(string), 
 		                                 typeof(string));
-		  foreach (Photo p in photos) {
+
+		  foreach (Photo p in _photos) {
 		    store.AppendValues(p.Thumbnail, GetCol1Data(p), GetCol2Data(p),
 		                            GetCol3Data(p), GetCol4Data(p));
-		    _photos.Add(p);
 		  }
-		  photoStore = store;
-		  filter = new TreeModelFilter(photoStore, null);
-		  filter.VisibleFunc = new TreeModelFilterVisibleFunc(FilterPhotos);
-		  treeview2.Model = filter;
-		  treeview2.ShowAll();
+		  
+		  Gtk.Application.Invoke(delegate{
+		    photoStore = store;
+		    filter = new TreeModelFilter(photoStore, null);
+		    filter.VisibleFunc = new TreeModelFilterVisibleFunc(FilterPhotos);
+		    treeview2.Model = filter;
+		    SetActivatePhotosTreeView(true);
+		    if (uploadbutton.Active) {
+		      SetUploadWindow(true);
+		    }
+		    uploadfilechooserbutton.Sensitive = true;
+		    treeview2.ShowAll();
+		  });
+		}
+		
+		private void UpdatePhotoCountLabel() {
+		  int count = 0;
+		  foreach (Photo p in _photos) {
+		    if (FilterPhoto(p)) count++;
+		  }
+		  label19.Markup = "<span foreground='white' font_desc='Times' weight='bold'> "
+		      + count + " photos </span>";
+		}
+		
+		public void PopulatePhotosTreeView(ArrayList photos) {
+		  if (photos == null) return;
+		  if (_populatephotosthread != null) _populatephotosthread.Abort();
+		  _photos.Clear();
+		  _photos.AddRange(photos);
+      UpdatePhotoCountLabel();
+      ThreadStart job = new ThreadStart(PopulateStore);
+      _populatephotosthread = new Thread(job);
+      _populatephotosthread.Start();
     }
     
     private bool FilterPhotos(TreeModel model, TreeIter iter) {
@@ -628,6 +887,17 @@ using Glade;
     }
     
     private bool FilterPhoto(Photo p) {
+      // Photo has to be dirty if 'Only Edited Photos' is ticked.
+      if (checkbutton2.Active 
+          && !uploadbutton.Active
+          && !PersistentInformation.GetInstance().IsPhotoDirty(p.Id))
+          return false;
+      // Now check for 'Commented Photos Only'
+      if (checkbutton4.Active
+          && !uploadbutton.Active
+          && !PersistentInformation.GetInstance().HasComment(p.Id))
+          return false;
+      
       string query = entry5.Text;
       if (query == "") return true;
       bool flag = false;
@@ -635,8 +905,10 @@ using Glade;
       if (p.Title.IndexOf(query, comp) > -1) flag = true;
       else if (p.Description.IndexOf(query, comp) > -1) flag = true;
       else if (p.TagString.IndexOf(query, comp) > -1) flag = true;
-      else if (p.PrivacyInfo.IndexOf(query, comp) > -1) flag = true;
-      else if (p.LicenseInfo.IndexOf(query, comp) > -1) flag = true;
+      else if (!checkbutton3.Active 
+               && p.PrivacyInfo.IndexOf(query, comp) > -1) flag = true;
+      else if (!checkbutton3.Active 
+               && p.LicenseInfo.IndexOf(query, comp) > -1) flag = true;
       return flag;
     }
     
@@ -650,6 +922,7 @@ using Glade;
     
     private void OnFilterEntryChanged(object o, EventArgs args) {
       filter.Refilter();
+      UpdatePhotoCountLabel();
     }
     
     // This method is used only to refresh the photos in the right pane.
@@ -726,9 +999,9 @@ using Glade;
 		  treeview2.Selection.Mode = Gtk.SelectionMode.Multiple;
 		  // Handle double clicks on photos.
 		  treeview2.RowActivated += new RowActivatedHandler(OnDoubleClickPhoto);
-		  
+
 		  // Allow dragging
-		  treeview2.EnableModelDragSource(Gdk.ModifierType.Button1Mask, 
+		  treeview2.EnableModelDragSource(Gdk.ModifierType.Button1Mask,
 		                                  targets, Gdk.DragAction.Copy);
 		  treeview2.DragDataGet += GetDataOfPhotoDragged;
 		  treeview2.DragBegin += BeginDragSetIcon;
@@ -746,16 +1019,89 @@ using Glade;
 		  Drag.SetIconPixbuf(args.Context, p.Thumbnail, 0, 0);
 		}
 		
+		public void SetUploadWindow(bool isactivated) {
+		  if (isactivated) {
+		    if (!uploadbutton.Active) return; // No point having the upload window
+		    // if its not in upload mode.
+		    
+  		  // Allow dropping photos for easy drag-n-drop uploading.
+  		  //treeview2.EnableModelDragDest(targets, Gdk.DragAction.Copy);
+  		  Gtk.Drag.DestSet(eventbox6, Gtk.DestDefaults.All, targets, Gdk.DragAction.Copy);
+        eventbox6.DragDataReceived += OnPhotoDraggedForUploading;
+        eventbox6.HeightRequest = 100;
+        popuplabel.Text = "Drop individual or multiple photos here to add them to upload list."
+          + " You can also drag and drop the entire folder to add all the photos"
+          + " present inside the folder.";
+        popuplabel.Wrap = true;
+        int height;
+        int width;
+        eventbox6.GetSizeRequest(out width, out height); 
+        popuplabel.SetSizeRequest(width, height);
+        Console.WriteLine("Adding populabel");
+        if (popuplabel.Parent == null) eventbox6.Add(popuplabel);
+        eventbox6.ShowAll();
+      } else {
+        eventbox6.HeightRequest = 0;
+        if (popuplabel.Parent != null) eventbox6.Remove(popuplabel);
+        Gtk.Drag.DestUnset(eventbox6);
+      }
+    }
+    
+		private void OnPhotoDraggedForUploading(object o, DragDataReceivedArgs args) {
+		  Gtk.Application.Invoke(delegate{
+		    uploadfilechooserbutton.Sensitive = false;
+		    SetUploadWindow(false);
+		  });
+		  
+		  System.IO.StringReader droppedreader = new System.IO.StringReader(
+		      System.Text.Encoding.UTF8.GetString(args.SelectionData.Data));
+		  string droppedline = droppedreader.ReadLine();
+		  while (droppedline != null) {
+		    string filename;
+		    if (droppedline.IndexOf("file:///") > -1) {
+		      filename = droppedline.Substring(7);
+		      filename = System.Uri.UnescapeDataString(filename);
+		    } else {
+		      Console.WriteLine("Unexpected file path: " + droppedline);
+		      droppedline = droppedreader.ReadLine();
+		      continue;
+		    }
+		    if (System.IO.Directory.Exists(filename)) {
+		      foreach (string fileindir in System.IO.Directory.GetFiles(filename)) {
+		        PersistentInformation.GetInstance().InsertEntryToUpload(fileindir);
+		      }
+		    } else {
+		      PersistentInformation.GetInstance().InsertEntryToUpload(filename);
+		    }
+		    droppedline = droppedreader.ReadLine();
+		  }
+		  // Refresh the photo view. It will take care of making the upload
+		  // file chooser button sensitive.
+		  RefreshUploadPhotos();
+		}
+		
 		private void OnDoubleClickPhoto(object o, RowActivatedArgs args) {
 		  ArrayList selectedphotos = new ArrayList();
 		  // Make sure that we don't point to the photo object stored here.
 		  // Otherwise, even if the editing is not saved, it would be stored
 		  // in _photos. So, create a new Photo object.
       Photo p = new Photo(GetPhoto(args.Path));
+      if (!uploadbutton.Active
+          && !PersistentInformation.GetInstance().HasOriginalPhoto(p.Id)
+          && !PersistentInformation.GetInstance().IsPhotoDirty(p.Id)) {
+		    PersistentInformation.GetInstance().InsertOriginalPhoto(p);
+		  }
       TreePath childpath = filter.ConvertPathToChildPath(args.Path);
-      SelectedPhoto sel = new SelectedPhoto(p, childpath.ToString());
-      selectedphotos.Add(sel);
-		  PhotoEditorUI.FireUp(selectedphotos, conflictbutton.Active);
+      if (GetMode() == DeskFlickrUI.ModeSelected.BlogMode) {
+        string blogid = ((PersistentInformation.Entry) _blogs[leftcurselectedindex]).entry1;
+        BlogEntry blogentry = PersistentInformation.GetInstance().GetEntryForBlog(blogid, p.Id);
+        BlogSelectedPhoto bsel = new BlogSelectedPhoto(p, blogentry, childpath.ToString());
+        selectedphotos.Add(bsel);
+      } else {
+        SelectedPhoto sel = new SelectedPhoto(p, childpath.ToString());
+        selectedphotos.Add(sel);
+      }
+		  PhotoEditorUI.FireUp(selectedphotos, GetMode());
 		}
 				
 		private void OnEditButtonClicked(object o, EventArgs args) {
@@ -765,11 +1111,24 @@ using Glade;
 		    ArrayList selectedphotos = new ArrayList();
         foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
           Photo p = new Photo(GetPhoto(path));
+          // Check if the original version is stored in db. Allow for revert.
+		      if (!uploadbutton.Active
+		          && !PersistentInformation.GetInstance().HasOriginalPhoto(p.Id)
+		          && !PersistentInformation.GetInstance().IsPhotoDirty(p.Id)) {
+		        PersistentInformation.GetInstance().InsertOriginalPhoto(p);
+		      }
           TreePath childpath = filter.ConvertPathToChildPath(path);
-          SelectedPhoto sel = new SelectedPhoto(p, childpath.ToString());
-          selectedphotos.Add(sel);
+          if (GetMode() == DeskFlickrUI.ModeSelected.BlogMode) {
+            string blogid = ((PersistentInformation.Entry) _blogs[leftcurselectedindex]).entry1;
+            BlogEntry blogentry = PersistentInformation.GetInstance().GetEntryForBlog(blogid, p.Id);
+            BlogSelectedPhoto bsel = new BlogSelectedPhoto(p, blogentry, childpath.ToString());
+            selectedphotos.Add(bsel);
+          } else {
+            SelectedPhoto sel = new SelectedPhoto(p, childpath.ToString());
+            selectedphotos.Add(sel);
+          }
         }
-        PhotoEditorUI.FireUp(selectedphotos, conflictbutton.Active);
+        PhotoEditorUI.FireUp(selectedphotos, GetMode());
   		} // check left tree now.
   		else if (treeview1.Selection.GetSelectedRows().Length > 0) {
   		  if (selectedtab == 1) return; // Tags can't be edited.
@@ -778,8 +1137,13 @@ using Glade;
   		  AlbumEditorUI.FireUp(album);
   		}
 		}
-			
-		private void OnDownloadButtonClicked(object o, EventArgs args) {
+	  
+	  private void OnDownloadPhotosMenuItemClicked(object o, EventArgs args) {
+	    FireUpFileChooserForDownloading();
+	  }
+	  
+		private void FireUpFileChooserForDownloading() {
+		  if (uploadbutton.Active) return;
       FileChooserDialog chooser = new FileChooserDialog(
           "Select a folder", null, FileChooserAction.SelectFolder,
           Stock.Open, ResponseType.Ok, Stock.Cancel, ResponseType.Cancel);
@@ -790,6 +1154,7 @@ using Glade;
       string foldername = "";
 		  if (choice == ResponseType.Ok) {
        foldername = chooser.Filename;
+       // Set the default path to be opened next time file chooser runs. 
        PersistentInformation.GetInstance().DownloadFoldername = foldername;
       }
       chooser.Destroy();
@@ -797,29 +1162,90 @@ using Glade;
       
       // Selected folder for downloading.
       ArrayList photoids = new ArrayList();
+      ArrayList selectedphotos = new ArrayList();
+      bool refreshview = false;
 		  if (treeview2.Selection.GetSelectedRows().Length > 0) {
 		    foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
 		      Photo p = new Photo(GetPhoto(path));
+		      TreePath childpath = filter.ConvertPathToChildPath(path);
+		      SelectedPhoto sel = new SelectedPhoto(p, childpath.ToString());
+		      selectedphotos.Add(sel);
 		      photoids.Add(p.Id);
 		    }
 		  }
 	    else if (treeview1.Selection.GetSelectedRows().Length > 0) {
+	      // Going through the complex way of figuring out photos for the
+	      // different tab modes. Easier way would be to just copy contents
+	      // of _photos, as it already takes care of left tree selection. However,
+	      // when the view is locked to 'downloads', _photos wouldn't be updated.
+	      // Hence the need to figure out photoids.
 		    TreePath path = treeview1.Selection.GetSelectedRows()[0];
-  		  Album album = new Album((Album) _albums[path.Indices[0]]);
-  		  photoids = PersistentInformation.GetInstance().GetPhotoIdsForAlbum(album.SetId);
-  		  foldername = String.Format("{0}/{1}", foldername, album.Title);
+		    if (selectedtab == 0) { // albums
+    		  Album album = new Album((Album) _albums[path.Indices[0]]);
+    		  photoids = PersistentInformation.GetInstance().GetPhotoIdsForAlbum(album.SetId);
+    		  //foldername = String.Format("{0}/{1}", foldername, album.Title);
+  		  } else if (selectedtab == 1) { // tags
+  		    string tag = (string) _tags[path.Indices[0]];
+  		    photoids = PersistentInformation.GetInstance().GetPhotoIdsForTag(tag);
+  		    //foldername = String.Format("{0}/{1}", foldername, tag);
+  		  } else if (selectedtab == 2) {
+  		    PersistentInformation.Entry poolentry = 
+  		        (PersistentInformation.Entry) _pools[path.Indices[0]];
+  		    string poolid = poolentry.entry1;
+  		    //string pooltitle = poolentry.entry2;
+  		    photoids = PersistentInformation.GetInstance().GetPhotoidsForPool(poolid);
+  		    //foldername = String.Format("{0}/{1}", foldername, pooltitle);
+  		  } else if (selectedtab == 3) {
+  		    PersistentInformation.Entry blog =
+  		        (PersistentInformation.Entry) _blogs[path.Indices[0]];
+  		    foreach (BlogEntry blogentry in 
+  		        PersistentInformation.GetInstance().GetEntriesForBlog(blog.entry1)) {
+  		      photoids.Add(blogentry.Photoid);
+  		    }
+  		    //foldername = String.Format("{0}/{1}", foldername, blog.entry2);
+  		  }
+  		  refreshview = true;
 		  }
 		  Utils.EnsureDirectoryExists(foldername);
 		  foreach (string id in photoids) {
+		    if (PersistentInformation.GetInstance().IsDownloadEntryExists(id)) {
+		      PersistentInformation.GetInstance().DeleteEntryFromDownload(id);
+		    }
 		    PersistentInformation.GetInstance().InsertEntryToDownload(id, foldername);
 		  }
+		  UpdateToolBarButtons();
+      if (downloadbutton.Active) RefreshDownloadPhotos();
+      else if (refreshview) RefreshLeftTreeView();
+      else UpdatePhotos(selectedphotos);
 		}
 		
+		private bool IsNormalModeSelected() {
+		  return !lockbutton.Active && !streambutton.Active 
+		         && !conflictbutton.Active && !uploadbutton.Active
+		         && !downloadbutton.Active;
+		}
+		
+		// These methods are only called when the state of the buttons is toggled.
 		private void OnLockButtonClicked(object o, EventArgs args) {
 		  if (lockbutton.Active) {
-		    streambutton.Active = false;
-		    conflictbutton.Active = false;
-		  } else {
+		    // The problem here is this, the user selects say photostream, and then
+		    // directly clicks on lock button. Result is that the photostream
+		    // is locked; similary for upload/download photos etc.
+		    if (streambutton.Active || conflictbutton.Active 
+		        || uploadbutton.Active || downloadbutton.Active) {
+		      streambutton.Active = false;
+		      conflictbutton.Active = false;
+		      uploadbutton.Active = false;
+		      downloadbutton.Active = false;
+		      // Now toggle lock button, so that RefreshLeftTreeView() is called
+		      // in normal mode, where no button is active.
+		      lockbutton.Active = false;
+		    }
+		    // If none of the other buttons is active, then this following command
+		    // would just act like a NOP. Otherwise, it would do the necessary
+		    // toggling of lock button back to active state.
+		    lockbutton.Active = true;
+		  } else if (IsNormalModeSelected()) {
 		    RefreshLeftTreeView();
 		  }
 		  if (lockbutton.Active) UpdateFlameWindowLabel();
@@ -829,10 +1255,12 @@ using Glade;
 		  if (streambutton.Active) {
 		    lockbutton.Active = false;
 		    conflictbutton.Active = false;
+		    uploadbutton.Active = false;
+		    downloadbutton.Active = false;
 		    ArrayList photos = PersistentInformation.GetInstance().GetAllPhotos();
-		    streambutton.Label = "Show Stream (" + photos.Count + ")";
+		    SetPhotoCountTip(uploadbutton, photos.Count);
 		    PopulatePhotosTreeView(photos);
-		  } else {
+		  } else if (IsNormalModeSelected()) {
 		    RefreshLeftTreeView();
 		  }
 		  if (streambutton.Active) UpdateFlameWindowLabel();
@@ -842,6 +1270,8 @@ using Glade;
 		  if (conflictbutton.Active) {
 		    lockbutton.Active = false;
 		    streambutton.Active = false;
+		    uploadbutton.Active = false;
+		    downloadbutton.Active = false;
 	      ArrayList photos = new ArrayList();
 	      // Get the photoid from these source (server) photos, and 
 	      // populate the tree with the ones that we have.
@@ -851,52 +1281,106 @@ using Glade;
 	        photos.Add(p);
 	      }
 	      PopulatePhotosTreeView(photos);
-		  } else {
+		  } else if (IsNormalModeSelected()) {
 		    RefreshLeftTreeView();
 		  }
 		  if (conflictbutton.Active) UpdateFlameWindowLabel();
 		}
 		
+		public void RefreshUploadPhotos() {
+		  if (!uploadbutton.Active) return;
+		  ArrayList photos = PersistentInformation.GetInstance().GetPhotosToUpload();
+		  SetPhotoCountTip(uploadbutton, photos.Count);
+		  PopulatePhotosTreeView(photos);
+		}
+		
 		private void OnUploadButtonClicked(object o, EventArgs args) {
-		  FileChooserDialog chooser = new FileChooserDialog(
-          "Select images to upload", null, FileChooserAction.Open,
-          Stock.Open, ResponseType.Ok, Stock.Cancel, ResponseType.Cancel);
-      
-      chooser.SetIconFromFile(DeskFlickrUI.ICON_PATH);
-      chooser.SetFilename(PersistentInformation.GetInstance().UploadFilename);
-      chooser.SelectMultiple = true;
-      ResponseType choice = (ResponseType) chooser.Run();
-      string[] filenames = null;
-		  if (choice == ResponseType.Ok) {
-       filenames = chooser.Filenames;
-       PersistentInformation.GetInstance().UploadFilename = filenames[0];
-      }
-      chooser.Destroy();
-      if (filenames == null) return;
-      foreach (string filename in filenames) {
-        PersistentInformation.GetInstance().InsertEntryToUpload(filename);
-      }
+		  if (uploadbutton.Active) {
+		    lockbutton.Active = false;
+		    streambutton.Active = false;
+		    conflictbutton.Active = false;
+		    downloadbutton.Active = false;
+		    RefreshUploadPhotos();
+        // Populate Photos treeview method will take care of setting
+        // the upload window. We can't do it here, because populate method
+        // runs a thread, and returns control before the entire population
+        // is complete. So, even if the window is set, it gets overridden
+        // when population is finished, and eventbox6 is made hidden.
+		  } else {
+		    SetUploadWindow(false);
+		    if (IsNormalModeSelected()) RefreshLeftTreeView();
+		  }
+		  if (uploadbutton.Active) UpdateFlameWindowLabel();
+		}
+		
+		private void RefreshDownloadPhotos() {
+		  ArrayList photos = new ArrayList();
+		  foreach (PersistentInformation.Entry entry in 
+		           PersistentInformation.GetInstance().GetEntriesToDownload()) {
+		    string photoid = entry.entry1;
+		    Photo photo = PersistentInformation.GetInstance().GetPhoto(photoid);
+		    photos.Add(photo);
+		  }
+		  SetPhotoCountTip(downloadbutton, photos.Count);
+		  PopulatePhotosTreeView(photos);
+		}
+		
+		private void OnDownloadButtonClicked(object o, EventArgs args) {
+		  if (downloadbutton.Active) {
+		    lockbutton.Active = false;
+		    streambutton.Active = false;
+		    conflictbutton.Active = false;
+		    uploadbutton.Active = false;
+		    RefreshDownloadPhotos();
+		  } else if (IsNormalModeSelected()) {
+		    RefreshLeftTreeView();
+		  }
+		  if (downloadbutton.Active) UpdateFlameWindowLabel();
+		}
+		
+		private void OnUploadPhotosMenuItemClicked(object o, EventArgs args) {
+		  FireUpFileChooserForUploading();
+		}
+		
+		private void FireUpFileChooserForUploading() {
+      UploadFileChooserUI.FireUp();
 		}
 		
 		private void SetTopLeftToolBar() {
 		  connectbutton = new ToolButton(Stock.Refresh);
 		  connectbutton.Sensitive = true;
 		  connectbutton.Clicked += new EventHandler(ConnectionHandler);
+		  connectbutton.SetTooltip(tips, "Sync Now", "Sync Now");
 		  toolbar2.Insert(connectbutton, -1);
-		  
+      
 		  ToolButton addsetbutton = new ToolButton(Stock.Add);
 		  addsetbutton.Sensitive = true;
 		  addsetbutton.Clicked += new EventHandler(OnAddNewSetEvent);
+		  addsetbutton.SetTooltip(tips, "Add New Set", "Add New Set");
 		  toolbar2.Insert(addsetbutton, -1);
 		  
 		  ToolButton editbutton = new ToolButton(Stock.Edit);
 		  editbutton.Sensitive = true;
 		  editbutton.Clicked += new EventHandler(OnEditButtonClicked);
+		  editbutton.SetTooltip(tips, "Edit", "Edit");
 		  toolbar2.Insert(editbutton, -1);
+		  
+		  uploadfilechooserbutton = new ToolButton(Stock.SortAscending);
+		  uploadfilechooserbutton.Sensitive = true;
+		  uploadfilechooserbutton.Clicked += new EventHandler(OnUploadPhotosMenuItemClicked);
+		  uploadfilechooserbutton.SetTooltip(tips, "Upload Photos", "Upload Photos");
+		  toolbar2.Insert(uploadfilechooserbutton, -1);
+		  
+		  ToolButton downloadfilechooserbutton = new ToolButton(Stock.SortDescending);
+		  downloadfilechooserbutton.Sensitive = true;
+		  downloadfilechooserbutton.Clicked += new EventHandler(OnDownloadPhotosMenuItemClicked);
+		  downloadfilechooserbutton.SetTooltip(tips, "Download Photos", "Download Photos");
+		  toolbar2.Insert(downloadfilechooserbutton, -1);
 		  
 		  ToolButton quitbutton = new ToolButton(Stock.Quit);
 		  quitbutton.Sensitive = true;
 		  quitbutton.Clicked += new EventHandler(OnQuitEvent);
+		  quitbutton.SetTooltip(tips, "Quit", "Quit");
 		  toolbar2.Insert(quitbutton, -1);
 		}
 		
@@ -917,9 +1401,23 @@ using Glade;
 		  streambutton = new ToggleToolButton(Stock.SelectAll);
 		  streambutton.IsImportant = true;
 		  streambutton.Sensitive = true;
-		  streambutton.Label = "Show Stream";
+		  streambutton.Label = "Stream";
 		  streambutton.Clicked += new EventHandler(OnStreamButtonClicked);
 		  toolbar1.Insert(streambutton, -1);
+		  
+		  uploadbutton = new ToggleToolButton(Stock.SortAscending);
+		  uploadbutton.IsImportant = true;
+		  uploadbutton.Sensitive = true;
+		  uploadbutton.Label = "Uploads";
+		  uploadbutton.Clicked += new EventHandler(OnUploadButtonClicked);
+		  toolbar1.Insert(uploadbutton, -1);
+		  
+		  downloadbutton = new ToggleToolButton(Stock.SortDescending);
+		  downloadbutton.IsImportant = true;
+		  downloadbutton.Sensitive = true;
+		  downloadbutton.Label = "Downloads";
+		  downloadbutton.Clicked += new EventHandler(OnDownloadButtonClicked);
+		  toolbar1.Insert(downloadbutton, -1);
 		  
 		  conflictbutton = new ToggleToolButton(Stock.DialogWarning);
 		  conflictbutton.IsImportant = true;
@@ -927,20 +1425,6 @@ using Glade;
 		  conflictbutton.Label = "Conflicts";
 		  conflictbutton.Clicked += new EventHandler(OnConflictButtonClicked);
 		  toolbar1.Insert(conflictbutton, -1);
-		  
-		  ToolButton downloadbutton = new ToolButton(Stock.SortDescending);
-		  downloadbutton.IsImportant = true;
-		  downloadbutton.Sensitive = true;
-		  downloadbutton.Label = "Download Photos";
-		  downloadbutton.Clicked += new EventHandler(OnDownloadButtonClicked);
-		  toolbar1.Insert(downloadbutton, -1);
-		  
-		  ToolButton uploadbutton = new ToolButton(Stock.SortAscending);
-		  uploadbutton.IsImportant = true;
-		  uploadbutton.Sensitive = true;
-		  uploadbutton.Label = "Upload Photos";
-		  uploadbutton.Clicked += new EventHandler(OnUploadButtonClicked);
-		  toolbar1.Insert(uploadbutton, -1);
 		  
 		  syncbutton = new ToolButton(Stock.Refresh);
 		  syncbutton.IsImportant = true;
@@ -953,11 +1437,23 @@ using Glade;
 		  // of photos.
 		  UpdateToolBarButtons();
 		}
-		  	
+
+    private void SetPhotoCountTip(Gtk.ToolItem item, int numphotos) {
+      item.SetTooltip(tips, numphotos + " pics", numphotos + " pics");
+    }
+    
   	public void UpdateToolBarButtons() {
   	  int countphotos = PersistentInformation.GetInstance().GetCountPhotos();
-  	  streambutton.Label = "Show Stream (" + countphotos + ")";
-  	  conflictbutton.Label = "Conflicts (" + _conflictedphotos.Count + ")";
+  	  SetPhotoCountTip(streambutton, countphotos);
+  	  
+  	  SetPhotoCountTip(conflictbutton, _conflictedphotos.Count);
+  	  conflictbutton.Sensitive = (_conflictedphotos.Count != 0);
+  	  
+  	  countphotos = PersistentInformation.GetInstance().GetPhotosToUpload().Count;
+  	  SetPhotoCountTip(uploadbutton, countphotos);
+
+  	  countphotos = PersistentInformation.GetInstance().GetEntriesToDownload().Count;
+  	  SetPhotoCountTip(downloadbutton, countphotos);
   	}
   	
 		private void SetVerticalBar() {
@@ -979,17 +1475,34 @@ using Glade;
       eventbox4.Add(poolLabel);
       eventbox4.ButtonPressEvent += PoolTabSelected;
       
+      Label blogLabel = new Label();
+      blogLabel.Markup = "<span foreground='white'>Blogs</span>";
+      blogLabel.Angle = 90;
+      eventbox10.Add(blogLabel);
+      eventbox10.ButtonPressEvent += BlogTabSelected;
+      
       // Set the default tab.
       AlbumTabSelected(null, null);
 		}
 		
 		private void UpdateFlameWindowLabel() {
-		  if (streambutton.Active) {
+		  if (lockbutton.Active) {
+		    label11.Markup =
+		        "<span style='italic'>View has been locked. Flames window is of no"
+		        + " good use in this mode.</span>";
+		  } else if (streambutton.Active) {
 		    label11.Markup = 
 		        "<span style='italic'>Drop photos here to delete them permanently.</span>";
 		  } else if (conflictbutton.Active) {
 		    label11.Markup =
-		        "<span style='italic'>Flames window is of no good use in this mode.</span>";
+		        "<span style='italic'>Conflict Resolution Mode. Flames window is of"
+		        + " no good use in this mode.</span>";
+		  } else if (uploadbutton.Active) {
+		    label11.Markup =
+		        "<span style='italic'>Drop photos here to remove them from upload list.</span>";
+		  } else if (downloadbutton.Active) {
+		    label11.Markup =
+		        "<span style='italic'>Drop photos here to remove them from download list.</span>";
 		  } else if (selectedtab == 0) {
 		    label11.Markup = 
 		        "<span style='italic'>Drop photos here to remove from set.</span>";
@@ -999,25 +1512,33 @@ using Glade;
 		  } else if (selectedtab == 2) {
 		    label11.Markup = 
 		        "<span style='italic'>Drop photos here to remove from pool.</span>";
+		  } else if (selectedtab == 3) {
+		    label11.Markup =
+		        "<span style='italic'>Drop photos here to remove blog entry.</span>";
 		  } else {
 		    label11.Markup =
 		        "<span style='italic'>Wao! This almost never happens.</span>";
 		  }
 		}
 		
-		private void AlbumTabSelected(object o, EventArgs args) {
-		  eventbox1.ModifyBg(StateType.Normal, tabselectedcolor);
+		private void SetAllTabsColorToNormal() {
+		  eventbox1.ModifyBg(StateType.Normal, tabcolor);
 		  eventbox2.ModifyBg(StateType.Normal, tabcolor);
 		  eventbox4.ModifyBg(StateType.Normal, tabcolor);
+		  eventbox10.ModifyBg(StateType.Normal, tabcolor);
+		}
+		
+		private void AlbumTabSelected(object o, EventArgs args) {
+		  SetAllTabsColorToNormal();
+		  eventbox1.ModifyBg(StateType.Normal, tabselectedcolor);
 		  selectedtab = 0;
 		  leftcurselectedindex = 0;
 		  PopulateAlbums();
 		}
 		
 		private void TagTabSelected(object o, EventArgs args) {
-		  eventbox1.ModifyBg(StateType.Normal, tabcolor);
+      SetAllTabsColorToNormal();
 		  eventbox2.ModifyBg(StateType.Normal, tabselectedcolor);
-		  eventbox4.ModifyBg(StateType.Normal, tabcolor);
 		  selectedtab = 1;
 		  leftcurselectedindex = 0;
 		  textview2.Buffer.Text = "";
@@ -1025,12 +1546,19 @@ using Glade;
 		}
 		
 		private void PoolTabSelected(object o, EventArgs args) {
-			eventbox1.ModifyBg(StateType.Normal, tabcolor);
-		  eventbox2.ModifyBg(StateType.Normal, tabcolor);
+      SetAllTabsColorToNormal();
 		  eventbox4.ModifyBg(StateType.Normal, tabselectedcolor);
 		  selectedtab = 2;
 		  leftcurselectedindex = 0;
 		  PopulatePools();
+		}
+		
+		private void BlogTabSelected(object o, EventArgs args) {
+		  SetAllTabsColorToNormal();
+		  eventbox10.ModifyBg(StateType.Normal, tabselectedcolor);
+		  selectedtab = 3;
+		  leftcurselectedindex = 0;
+		  PopulateBlogs();
 		}
 		
 		public static DeskFlickrUI GetInstance() {
@@ -1101,6 +1629,10 @@ using Glade;
       imagemenuitem5.Activated += new EventHandler(OnQuitEvent);
       // About button.
       menuitem2.Activated += new EventHandler(OnAboutButtonClicked);
+      // Upload button
+      menuitem5.Activated += new EventHandler(OnUploadPhotosMenuItemClicked);
+      // Download button
+      menuitem6.Activated += new EventHandler(OnDownloadPhotosMenuItemClicked);
     }
     
     public void ShowMessageDialog(string message) {
@@ -1256,7 +1788,7 @@ using Glade;
   	public void SetStatusLabel(string status) {
   	  label1.Text = status;
   	}
-    
+
     private void SetFlamesWindow() {
       eventbox3.ModifyBg(StateType.Normal, tabcolor);
       Gtk.Drag.DestSet(eventbox3, Gtk.DestDefaults.All, 
@@ -1288,9 +1820,18 @@ using Glade;
       PersistentInformation.GetInstance().DeleteAllTags(photoid);
     }
     
+    private void RemovePhotoFromModel(TreePath path) {
+	    // Convert path to childpath.
+      TreePath childpath = filter.ConvertPathToChildPath(path);
+      TreeIter iter;
+      photoStore.GetIter(out iter, childpath);
+      photoStore.Remove(ref iter);
+      _photos.RemoveAt(childpath.Indices[0]);
+  	}
+  	        
     private void OnPhotoDraggedForDeletion(object o, DragDataReceivedArgs args) {
       // Don't do anything if conflict button is on.
-      if (conflictbutton.Active) return;
+      if (conflictbutton.Active || lockbutton.Active) return;
       if (streambutton.Active) {
         int countphotos = treeview2.Selection.CountSelectedRows();
         MessageDialog md = new MessageDialog(
@@ -1329,15 +1870,41 @@ using Glade;
   	        // Handle the magic of deletion of photos, and updates database
   	        // wide.
             PhotoDeletionHandler(photoid);
-  	        // Convert path to childpath.
-  	        TreePath childpath = filter.ConvertPathToChildPath(path);
-  	        TreeIter iter;
-  	        photoStore.GetIter(out iter, childpath);
-            photoStore.Remove(ref iter);
-  	        _photos.RemoveAt(childpath.Indices[0]);
+            RemovePhotoFromModel(path);
   	      }
-  	    streambutton.Label = "Show Stream (" + _photos.Count + ")";
+  	    SetPhotoCountTip(streambutton, _photos.Count);
   	    }
+      }
+      else if (uploadbutton.Active) {
+        TreePath[] selectedpaths = treeview2.Selection.GetSelectedRows();
+        for (int i=0; i<selectedpaths.Length; i++) {
+          TreePath path = selectedpaths[i];
+          // This method is explained above in stream button section.
+          for (int j=0; j<i; j++) {
+            path.Prev();
+          }
+          Photo photo = GetPhoto(path);
+          PersistentInformation.GetInstance().DeleteThumbnail(photo.Id);
+          PersistentInformation.GetInstance().DeleteSmallImage(photo.Id);
+          string filename = photo.Id.Replace("'", "''");
+          PersistentInformation.GetInstance().DeleteEntryFromUpload(filename);
+          RemovePhotoFromModel(path);
+        }
+        SetPhotoCountTip(uploadbutton, _photos.Count);
+      } 
+      else if (downloadbutton.Active) {
+        TreePath[] selectedpaths = treeview2.Selection.GetSelectedRows();
+        for (int i=0; i<selectedpaths.Length; i++) {
+          TreePath path = selectedpaths[i];
+          // This method is explained above in stream button section.
+          for (int j=0; j<i; j++) {
+            path.Prev();
+          }
+          Photo photo = GetPhoto(path);
+          PersistentInformation.GetInstance().DeleteEntryFromDownload(photo.Id);
+          RemovePhotoFromModel(path);
+        }
+        SetPhotoCountTip(downloadbutton, _photos.Count);
       }
       else if (selectedtab == 0) { // albums
         string setid = ((Album) _albums[leftcurselectedindex]).SetId;
@@ -1353,16 +1920,23 @@ using Glade;
             PersistentInformation.GetInstance().DeleteAlbum(setid);
           }
         }
-      } 
+      }
       else if (selectedtab == 1) { // tags
         string tag = (string) _tags[leftcurselectedindex];
         foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
-		      string photoid = GetPhoto(path).Id;
-		      PersistentInformation.GetInstance().DeleteTag(photoid, tag);
-		      PersistentInformation.GetInstance().SetPhotoDirty(photoid, true);
+          Photo photo = GetPhoto(path);
+          // Check if the original version is stored in db. Allow for revert.
+		      if (!PersistentInformation.GetInstance().HasOriginalPhoto(photo.Id)
+		          && !PersistentInformation.GetInstance().IsPhotoDirty(photo.Id)) {
+		        PersistentInformation.GetInstance().InsertOriginalPhoto(photo);
+		      }
+		      if (PersistentInformation.GetInstance().HasTag(photo.Id, tag)) {
+		        PersistentInformation.GetInstance().DeleteTag(photo.Id, tag);
+		        PersistentInformation.GetInstance().SetPhotoDirty(photo.Id, true);
+		      }
 		    }
       }
-      else if (selectedtab == 2) {
+      else if (selectedtab == 2) { // pools
         PersistentInformation.Entry entry = 
             (PersistentInformation.Entry) _pools[leftcurselectedindex];
         string groupid = entry.entry1;
@@ -1375,7 +1949,17 @@ using Glade;
                                  .MarkPhotoDeletedFromPool(photoid, groupid, true);
           }
         }
+      }
+      else if (selectedtab == 3) { // blogs
+        PersistentInformation.Entry entry =
+            (PersistentInformation.Entry) _blogs[leftcurselectedindex];
+        string blogid = entry.entry1;
+        foreach (TreePath path in treeview2.Selection.GetSelectedRows()) {
+          string photoid = GetPhoto(path).Id;
+          PersistentInformation.GetInstance().DeleteEntryFromBlog(blogid, photoid);
+        }
       } // if else ends here.
+      UpdatePhotoCountLabel();
       RefreshLeftTreeView();
     }
     

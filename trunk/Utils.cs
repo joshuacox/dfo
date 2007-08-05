@@ -17,6 +17,15 @@ using System.Text.RegularExpressions;
 		  return intersectedlist;
 		}
 		
+		// Just for string arrays.
+		public static bool IsStringArrayEqual(ArrayList a1, ArrayList a2) {
+		  if (a1.Count != a2.Count) return false;
+		  foreach (string str in a1) {
+		    if (!a2.Contains(str)) return false;
+		  }
+		  return true;
+		}
+		
 		public static ArrayList ParseTagsFromString(string tagstring) {
 		  if (tagstring.Contains("\"")) return null;
 		  
@@ -59,4 +68,13 @@ using System.Text.RegularExpressions;
 			str = str.Replace ("<", "&lt;");
 			return str;
     }
+    
+    public static bool isImageFile(string filepath) {
+      System.IO.FileInfo finfo = new System.IO.FileInfo(filepath);
+      if (!finfo.Exists) return false;
+      System.StringComparison comp = System.StringComparison.OrdinalIgnoreCase;
+      if (finfo.Extension.IndexOf("jpg", comp) > -1) return true;
+      if (finfo.Extension.IndexOf("png", comp) > -1) return true;
+      return false;
+		}
 	}

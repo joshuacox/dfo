@@ -109,6 +109,7 @@ using FlickrNet;
         UpdateUIAboutConnection();
   		  UpdateUploadStatus();
         UpdateStream();
+        PersistentInformation.GetInstance().DeleteAllOriginalPhotos();
   		  UpdateAlbums();
   		  foreach (Album a in PersistentInformation.GetInstance().GetAlbums()) {
   		    if (PersistentInformation.GetInstance().IsAlbumNew(a.SetId)) continue;
@@ -120,6 +121,7 @@ using FlickrNet;
   		    });
   		  }
   		  UpdatePools();
+  		  UpdateBlogs();
   		  // Sync photos at the end. It takes time for the changes done to server
   		  // to propagate. If we keep these sync methods before updates, then
   		  // the changes would be synced to server, however, the server would
@@ -127,6 +129,8 @@ using FlickrNet;
   		  // would end up removing the changes, and only show them again at 
   		  // the next update.
   		  SyncDirtyPhotosToServer();
+  		  SyncDeletedCommentsToServer();
+  		  SyncDirtyCommentsToServer();
   		  
   		  SyncNewAlbumsToServer();
   		  SyncDirtyAlbumsToServer();
@@ -136,6 +140,7 @@ using FlickrNet;
         
         SyncPhotosDeletedFromPools();
         SyncPhotosAddedToPools();
+        SyncBlogPosts();
         
   		  CheckPhotosToDownload();
   		  CheckPhotosToUpload();
@@ -231,6 +236,23 @@ using FlickrNet;
 		  throw new Exception("FlickrCommunicator: GetAlbumList unreachable code");
 		}
 		
+		private FlickrNet.Blog[] SafelyGetBlogList() {
+		  FlickrNet.Blog[] blogs = null;
+		  for (int i=0; i<MAXTRIES; i++) {
+		    try {
+		      blogs = flickrObj.BlogGetList().BlogCollection;
+		      return blogs;
+		    } catch(FlickrNet.FlickrException e) {
+		      if (i == MAXTRIES-1) {
+            PrintException(e);
+            if (e.Code == CODE_TIMEOUT) _isConnected = false;
+            return null;
+          }
+		      continue;
+		    }
+		  }
+		  throw new Exception("FlickrCommunicator: GetBlogList unreachable code");
+		}
 		
 		private FlickrNet.Photoset SafelyCreateNewAlbum(Album album) {
 		  FlickrNet.Photoset photoset;
@@ -259,6 +281,31 @@ using FlickrNet;
 		    continue;
 		  }
 		  throw new Exception("FlickrCommunicator: CreateNewAlbum unreachable code");
+		}
+		
+		private ArrayList SafelyGetComments(string photoid) {
+		  FlickrNet.Comment[] flickrcomments;
+		  for (int i=0; i<MAXTRIES; i++) {
+  		  try {
+  		    flickrcomments = flickrObj.PhotosCommentsGetList(photoid);
+  		    ArrayList comments = new ArrayList(); 
+  		    foreach (FlickrNet.Comment flickrcomment in flickrcomments) {
+  		      Comment comment = new Comment(flickrcomment.CommentId, 
+  		                                    flickrcomment.CommentHtml,
+  		                                    flickrcomment.AuthorUserName);
+  		      comments.Add(comment);
+  		    }
+  		    return comments;
+  		  } catch (FlickrNet.FlickrException e) {
+  		    if (i == MAXTRIES-1) {
+  		      PrintException(e);
+  		      if (e.Code == CODE_TIMEOUT) _isConnected = false;
+  		      return null;
+  		    }
+  		  }
+  		  continue;
+		  }
+		  throw new Exception("FlickrCommunicator: SafelyGetComments unreachable code");
 		}
 		
 		// To keep it simple, if any of the steps involved in retrieving
@@ -315,7 +362,66 @@ using FlickrNet;
         tags.Add(tag.TagText);
 		  }
 		  photo.Tags = tags;
+		  
+		  // Step 5: Retrieve comments.
+		  if (pInfo.CommentsCount > 0) {
+		    ArrayList comments = SafelyGetComments(photoid);
+		    if (comments != null) {
+		      Dictionary<string, Comment> localcommentsdic = new Dictionary<string, Comment>();
+		      foreach (Comment comment in 
+		          PersistentInformation.GetInstance().GetCommentsForPhoto(photoid)) {
+		        localcommentsdic.Add(comment.CommentId, comment);
+		      }
+		      foreach (Comment comment in comments) {
+		        if (localcommentsdic.ContainsKey(comment.CommentId)) {
+		          // Comment is present in db. But check if the comment html text
+		          // is still the same, or has been changed online.
+		          if (!comment.CommentHtml.Equals(localcommentsdic[comment.CommentId])) {
+		            PersistentInformation.GetInstance().UpdateComment(photoid,
+		                comment.CommentId, comment.CommentHtml);
+		          }
+		        } else { // comment is not present locally.
+		          PersistentInformation.GetInstance().InsertComment(photoid, 
+		              comment.CommentId, comment.CommentHtml, comment.UserName);
+		        }
+		      }
+		    }
+		  } else { // There're no comments online. So, wipe out any if present in db.
+		    PersistentInformation.GetInstance().DeleteCleanComments(photoid);
+		  }
+		  
 		  return photo;
+		}
+		
+		private void UpdateBlogs() {
+		  Gtk.Application.Invoke (delegate {
+		    DeskFlickrUI.GetInstance().SetStatusLabel("Updating blogs...");
+        DeskFlickrUI.GetInstance().SetProgressBarText("");
+      });
+      FlickrNet.Blog[] blogs = SafelyGetBlogList();
+      if (blogs == null) {
+        UpdateUIAboutConnection();
+        return;
+      }
+		  Gtk.Application.Invoke (delegate {
+		    DeskFlickrUI.GetInstance().SetLimitsProgressBar(blogs.Length);
+		  });
+		  ArrayList blogids = new ArrayList();
+		  foreach (PersistentInformation.Entry entry 
+		      in PersistentInformation.GetInstance().GetAllBlogs()) {
+		    blogids.Add(entry.entry1);
+		  }
+		  PersistentInformation.GetInstance().DeleteAllBlogs();
+		  foreach (FlickrNet.Blog blog in blogs) {
+		    if (blog.NeedsPassword == 0)
+		        PersistentInformation.GetInstance().InsertBlog(blog.BlogId, blog.BlogName);
+		    DelegateIncrementProgressBar();
+		  }
+      foreach (string blogid in blogids) {
+        if (!PersistentInformation.GetInstance().HasBlog(blogid)) {
+          PersistentInformation.GetInstance().DeleteAllEntriesFromBlog(blogid);
+        }
+      }
 		}
 		
 		private void UpdateAlbums() {
@@ -503,6 +609,7 @@ using FlickrNet;
 		private void UpdateUploadStatus() {
 		  FlickrNet.UserStatus userstatus = flickrObj.PeopleGetUploadStatus();
 		  PersistentInformation.GetInstance().UserId = userstatus.UserId;
+		  PersistentInformation.GetInstance().UserName = userstatus.UserName;
 		  Gtk.Application.Invoke(delegate {
 		    DeskFlickrUI.GetInstance().SetUploadStatus(
 		        userstatus.BandwidthMax, userstatus.BandwidthUsed);
@@ -684,6 +791,64 @@ using FlickrNet;
 		  }
 		}
 		
+		private void SyncDirtyCommentsToServer() {
+		  ArrayList comments = PersistentInformation.GetInstance().GetDirtyComments();
+		  Gtk.Application.Invoke (delegate {
+		    DeskFlickrUI.GetInstance().SetStatusLabel("Syncing comments to server...");
+		    DeskFlickrUI.GetInstance().SetProgressBarText("");
+		    DeskFlickrUI.GetInstance().SetLimitsProgressBar(comments.Count);
+		  });
+		  foreach (Comment comment in comments) {
+		    if (comment.CommentId.IndexOf("new:") > -1) { // new comment
+		      string newcommentid = flickrObj.PhotosCommentsAddComment(comment.PhotoId,
+		          comment.CommentHtml);
+		      if (newcommentid != null && !newcommentid.Trim().Equals("")) {
+		        // Added the comment.
+		        PersistentInformation.GetInstance().DeleteComment(comment.PhotoId, comment.CommentId);
+		        PersistentInformation.GetInstance().InsertComment(comment.PhotoId, 
+		            newcommentid, comment.CommentHtml, comment.UserName);
+		      }
+		    } else { // edited comment.
+		      flickrObj.PhotosCommentsEditComment(comment.CommentId, comment.CommentHtml);
+		      PersistentInformation.GetInstance().SetCommentDirty(comment.PhotoId, 
+		          comment.CommentId, false);
+		    }
+	      DelegateIncrementProgressBar();
+		  }
+		}
+		
+		private void SyncDeletedCommentsToServer() {
+		  ArrayList comments = PersistentInformation.GetInstance().GetDeletedComments();
+		  Gtk.Application.Invoke (delegate {
+		    DeskFlickrUI.GetInstance().SetStatusLabel("Syncing deleted comments to server...");
+		    DeskFlickrUI.GetInstance().SetProgressBarText("");
+		    DeskFlickrUI.GetInstance().SetLimitsProgressBar(comments.Count);
+		  });
+		  foreach (Comment comment in comments) {
+		    flickrObj.PhotosCommentsDeleteComment(comment.CommentId);
+		    PersistentInformation.GetInstance().DeleteComment(comment.PhotoId, 
+		        comment.CommentId);
+		    DelegateIncrementProgressBar();
+		  }
+		}
+		
+		private void SyncBlogPosts() {
+		  ArrayList blogentries = PersistentInformation.GetInstance().GetAllBlogEntries();
+		  Gtk.Application.Invoke (delegate {
+		    DeskFlickrUI.GetInstance().SetStatusLabel("Posting blog entries...");
+		    DeskFlickrUI.GetInstance().SetProgressBarText("");
+		    DeskFlickrUI.GetInstance().SetLimitsProgressBar(blogentries.Count);
+		  });
+		  foreach (BlogEntry blogentry in blogentries) {
+		    if (flickrObj.BlogPostPhoto(blogentry.Blogid, blogentry.Photoid, 
+		        blogentry.Title, blogentry.Desc)) {
+		      PersistentInformation.GetInstance().DeleteEntryFromBlog(blogentry.Blogid, 
+		          blogentry.Photoid);
+		    }
+		    DelegateIncrementProgressBar();
+		  }
+		}
+		
 		private void SyncNewAlbumsToServer() {
 		  ArrayList albums = PersistentInformation.GetInstance().GetNewAlbums();
 		  Gtk.Application.Invoke (delegate {
@@ -775,7 +940,7 @@ using FlickrNet;
 		    else if (table.ContainsKey("large")) sourceurl = (string) table["large"];
 		    else if (table.ContainsKey("medium")) sourceurl = (string) table["medium"];
 		    else {
-		      PersistentInformation.GetInstance().DeleteEntryFromDownload(entry);
+		      PersistentInformation.GetInstance().DeleteEntryFromDownload(photoid);
 		      continue;
 		    }
 		    string safetitle = p.Title.Replace("/", "");
@@ -789,7 +954,7 @@ using FlickrNet;
 		      continue;
 		    }
         DelegateIncrementProgressBar();
-		    PersistentInformation.GetInstance().DeleteEntryFromDownload(entry);
+		    PersistentInformation.GetInstance().DeleteEntryFromDownload(photoid);
 		  }
 		}
 		
@@ -798,15 +963,16 @@ using FlickrNet;
 		// no time, but then it would take long to finish the upload. Maybe its
 		// practically just tracking the bytes "read", rather than "uploaded".
 		private void CheckPhotosToUpload() {
-		  ArrayList filenames = PersistentInformation.GetInstance().GetEntriesToUpload();
+		  ArrayList photos = PersistentInformation.GetInstance().GetPhotosToUpload();
 		  
 		  Gtk.Application.Invoke (delegate {
 		    DeskFlickrUI.GetInstance().SetStatusLabel("Uploading photos...");
-		    DeskFlickrUI.GetInstance().SetLimitsProgressBar(filenames.Count);
+		    DeskFlickrUI.GetInstance().SetLimitsProgressBar(photos.Count);
 		  });
 		  
-		  foreach (string filename in filenames) {
+		  foreach (Photo photo in photos) {
 		    // Check if the file exists.
+		    string filename = photo.Id;
 		    System.IO.FileInfo finfo = new System.IO.FileInfo(filename);
 		    if (!finfo.Exists) continue;
 
@@ -818,22 +984,24 @@ using FlickrNet;
 		    // Upload the photo now.
 		    // Set the title to photo name. Set the photo to private mode for now.
 		    // Add a tag "dfo" to uploaded photo.
-		    string photoid = flickrObj.UploadPicture(
-		        filename, finfo.Name, 
-		        "Uploaded through <a href='http://code.google.com/p/dfo'>Desktop Flickr Organizer</a>.",
-		        "dfoupload", false, false, false);
-		    if (photoid == null) continue;
+		    string newphotoid = flickrObj.UploadPicture(
+		        filename, photo.Title, photo.Description,
+		        Utils.GetDelimitedString(photo.Tags, ","),
+		        (photo.IsPublic == 1), (photo.IsFamily == 1),
+		        (photo.IsFriend == 1));
+		    if (newphotoid == null) continue;
 		    
 		    // The photo has been successfully uploaded.
         DelegateIncrementProgressBar();
-		  
+		    PersistentInformation.GetInstance().DeleteThumbnail(photo.Id);
+		    PersistentInformation.GetInstance().DeleteSmallImage(photo.Id);
 		    PersistentInformation.GetInstance().DeleteEntryFromUpload(filename);
 		    // Try if we can retrieve the photo information, this could be a bit
 		    // to early for the information to be spread out to the server
 		    // clusters. Keep our fingers crossed!
-		    Photo photo = RetrievePhoto(photoid);
-		    if (photo == null) continue;
-		    PersistentInformation.GetInstance().UpdatePhoto(photo);
+		    Photo p = RetrievePhoto(newphotoid);
+		    if (p == null) continue;
+		    PersistentInformation.GetInstance().UpdatePhoto(p);
 		  }
 		}
 		
