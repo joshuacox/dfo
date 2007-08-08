@@ -44,7 +44,7 @@ using FlickrNet;
 		    flickrObj = new Flickr(_apikey, _secret, token);
 		    flickrObj.TestLogin();
         _isConnected = true;
-		  } catch (FlickrNet.FlickrException e) {
+		  } catch (FlickrNet.FlickrApiException e) {
 		    PrintException(e);
 		    _isConnected = false;
 		    return;
@@ -88,7 +88,7 @@ using FlickrNet;
 		  });
 		}
 		
-		private void PrintException(FlickrNet.FlickrException e) {
+		private void PrintException(FlickrNet.FlickrApiException e) {
 		  Console.WriteLine(e.Code + " : " + e.Verbose);
 		}
 		
@@ -167,7 +167,7 @@ using FlickrNet;
 		    try {
 		      pInfo = flickrObj.PhotosGetInfo(photoid);
 		      return pInfo;
-		    } catch(FlickrNet.FlickrException e) {
+		    } catch(FlickrNet.FlickrApiException e) {
 		      if (e.Code == 1) return null; // Photo not found.
 		      // Maximum attempts over.
 		      if (i == MAXTRIES-1) {
@@ -189,7 +189,7 @@ using FlickrNet;
 		    try {
 		      sizes = flickrObj.PhotosGetSizes(photoid);
 		      return sizes;
-		    } catch(FlickrNet.FlickrException e) {
+		    } catch(FlickrNet.FlickrApiException e) {
 		      // Maximum attempts over.
 		      if (i == MAXTRIES-1) {
 		        PrintException(e);
@@ -224,7 +224,7 @@ using FlickrNet;
         try {
 		      sets = flickrObj.PhotosetsGetList().PhotosetCollection;
 		      return sets;
-		    } catch(FlickrNet.FlickrException e) {
+		    } catch(FlickrNet.FlickrApiException e) {
 		      // Maximum attempts over.
           if (i == MAXTRIES-1) {
             PrintException(e);
@@ -243,7 +243,7 @@ using FlickrNet;
 		    try {
 		      blogs = flickrObj.BlogGetList().BlogCollection;
 		      return blogs;
-		    } catch(FlickrNet.FlickrException e) {
+		    } catch(FlickrNet.FlickrApiException e) {
 		      if (i == MAXTRIES-1) {
             PrintException(e);
             if (e.Code == CODE_TIMEOUT) _isConnected = false;
@@ -262,7 +262,7 @@ using FlickrNet;
 		      photoset = flickrObj.PhotosetsCreate(album.Title, 
 		                                           album.Desc, album.PrimaryPhotoid);
 		      return photoset;
-		    } catch(FlickrNet.FlickrException e) {
+		    } catch(FlickrNet.FlickrApiException e) {
           // Status quo, if can't create any new sets. Let the information
           // be there, so that we can retry.
           if (e.Code == 3) {
@@ -297,7 +297,7 @@ using FlickrNet;
   		      comments.Add(comment);
   		    }
   		    return comments;
-  		  } catch (FlickrNet.FlickrException e) {
+  		  } catch (FlickrNet.FlickrApiException e) {
   		    if (i == MAXTRIES-1) {
   		      PrintException(e);
   		      if (e.Code == CODE_TIMEOUT) _isConnected = false;
@@ -508,9 +508,9 @@ using FlickrNet;
 		  for (int i=0; i<MAXTRIES; i++) {
 		    try {
 		      photos = flickrObj.PhotosetsGetPhotos(
-		                    album.SetId, PhotoSearchExtras.LastUpdated);
+		                    album.SetId, PhotoSearchExtras.LastUpdated).PhotoCollection;
 		      return photos;
-		    } catch(FlickrNet.FlickrException e) {
+		    } catch(FlickrNet.FlickrApiException e) {
 		      // Maximum attempts over.
 		      if (i == MAXTRIES-1) {
 		        PrintException(e);
@@ -527,7 +527,7 @@ using FlickrNet;
 		  for (int i=0; i<MAXTRIES; i++) {
 		    try {
 		      flickrObj.PhotosDelete(photoid);
-		    } catch(FlickrNet.FlickrException e) {
+		    } catch(FlickrNet.FlickrApiException e) {
 		      // Maximum attempts over.
 		      if (i == MAXTRIES-1) {
 		        PrintException(e);
@@ -704,7 +704,7 @@ using FlickrNet;
 		    });
 		    try {
 		      flickrObj.GroupPoolAdd(photoid, groupid); //photoid, groupid
-		    } catch (FlickrNet.FlickrException e) {
+		    } catch (FlickrNet.FlickrApiException e) {
 		      if (e.Code == 3) {
 		        PersistentInformation.GetInstance().MarkPhotoAddedToPool(photoid, groupid, false);
 		      }
@@ -740,7 +740,7 @@ using FlickrNet;
 		    });
 		    try {
 		      flickrObj.GroupPoolRemove(photoid, groupid); //photoid, groupid
-		    } catch (FlickrNet.FlickrException e) {
+		    } catch (FlickrNet.FlickrApiException e) {
 		      if (e.Code == 2) { // not present in the pool.
 		        PersistentInformation.GetInstance().DeletePhotoFromPool(photoid, groupid);
 		      }
@@ -857,7 +857,7 @@ using FlickrNet;
 		        PersistentInformation.GetInstance().DeleteEntryFromBlog(
 		            blogentry.Blogid, blogentry.Photoid);
 		      }
-		    } catch (FlickrNet.FlickrException e) {
+		    } catch (FlickrNet.FlickrApiException e) {
 	        Gtk.Application.Invoke (delegate {
 	          string operation = "Posting '" + blogentry.Title + "' to blog.";
 	          string message = operation + "\n Got response: " + e.Message;
