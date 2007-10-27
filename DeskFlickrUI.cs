@@ -938,6 +938,7 @@ using Glade;
     }
     
     private void DoFilterEntries() {
+      if (filter == null) return;
       Gtk.Application.Invoke(delegate{
         filter.Refilter();
         UpdatePhotoCountLabel();
