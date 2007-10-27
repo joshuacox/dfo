@@ -380,7 +380,7 @@ using FlickrNet;
 		          // is still the same, or has been changed online.
 		          if (!comment.CommentHtml.Equals(localcommentsdic[comment.CommentId])) {
 		            PersistentInformation.GetInstance().UpdateComment(photoid,
-		                comment.CommentId, comment.CommentHtml);
+		                comment.CommentId, comment.CommentHtml, false);
 		          }
 		        } else { // comment is not present locally.
 		          PersistentInformation.GetInstance().InsertComment(photoid, 
