@@ -333,7 +333,7 @@ using Glade;
 		  if (!RunInputTextDialog(
 		      "Edit Comment", Stock.Ok, originalcomment, out commenthtml)) return;
 		  PersistentInformation.GetInstance().UpdateComment(
-		      p.Id, comment.CommentId, commenthtml);
+		      p.Id, comment.CommentId, commenthtml, true);
 		  PopulateComments(p.Id);
     }
     

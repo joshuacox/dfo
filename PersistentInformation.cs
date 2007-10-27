@@ -810,13 +810,15 @@ using Mono.Data.SqliteClient;
 		  SetCommentDirty(photoid, commentid, true);
 		}
 		
-		public void UpdateComment(string photoid, string commentid, string commenthtml) {
+		public void UpdateComment(string photoid, string commentid, 
+		                          string commenthtml, bool isdirty) {
 		  lock (_commentlock) {
 		  string safecomment = commenthtml.Replace("'", "''");
+		  int dirty = isdirty ? 1 : 0;
 		  RunNonQuery(String.Format(
-		      "update comment set commenthtml='{0}', isdirty=1"
-		      + " where photoid='{1}' and commentid='{2}';",
-		      safecomment, photoid, commentid));
+		      "update comment set commenthtml='{0}', isdirty={1}"
+		      + " where photoid='{2}' and commentid='{3}';",
+		      safecomment, dirty, photoid, commentid));
 		  }
 		}
 		

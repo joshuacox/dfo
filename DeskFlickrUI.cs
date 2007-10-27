@@ -1663,6 +1663,9 @@ using Glade;
     }
     
     private void OnAddNewSetEvent(object sender, EventArgs args) {
+      // If Upload mode is active, then do nothing.
+      if (uploadbutton.Active) return;
+      
       if (treeview2.Selection.CountSelectedRows() == 0) {
         ShowMessageDialog("Please select a photo to be used as primary photo"
   	        + " for the new Photo Set. You can change the primary photo later as well.");
