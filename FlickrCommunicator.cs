@@ -16,6 +16,7 @@ using FlickrNet;
     
     private bool _isConnected;
     private bool _isbusy;
+    private bool _stopSync;
     private Flickr flickrObj;
     private System.Net.WebClient webclient;
     
@@ -24,6 +25,7 @@ using FlickrNet;
 		  webclient = new System.Net.WebClient();
       _isConnected = false;
       _isbusy = false;
+      _stopSync = false;
     }
 		
 		public static FlickrCommunicator GetInstance() {
@@ -98,6 +100,17 @@ using FlickrNet;
 		  }
 		}
 		
+		public void DoStopSync() {
+		  _stopSync = true;
+		}
+		
+		private static string ROUTINE_EXCEPTION_MSG = 
+		    "Proceed further with routine: Permission Denied";
+
+		private void CheckProceedRoutinePermission() {
+		  if (_stopSync) throw new Exception(ROUTINE_EXCEPTION_MSG);
+		}
+		
 		/*
 		 * This method is the one which takes care of all the sync operations,
 		 * uploading and downloading of photos. Call it the master method,
@@ -107,11 +120,18 @@ using FlickrNet;
 		  _isbusy = true;
 		  try {
         UpdateUIAboutConnection();
+        CheckProceedRoutinePermission();
+        
   		  UpdateUploadStatus();
+  		  CheckProceedRoutinePermission();
+        
         UpdateStream();
         PersistentInformation.GetInstance().DeleteAllOriginalPhotos();
-
+        CheckProceedRoutinePermission();
+  		  
   		  UpdateAlbums();
+  		  CheckProceedRoutinePermission();
+  		  
   		  foreach (Album a in PersistentInformation.GetInstance().GetAlbums()) {
   		    if (PersistentInformation.GetInstance().IsAlbumNew(a.SetId)) continue;
   		    UpdatePhotosForAlbum(a);
@@ -120,9 +140,15 @@ using FlickrNet;
   		        DeskFlickrUI.GetInstance().RefreshLeftTreeView();
   		      }
   		    });
+  		    CheckProceedRoutinePermission();
   		  }
+  		  
   		  UpdatePools();
+  		  CheckProceedRoutinePermission();
+  		  
   		  UpdateBlogs();
+  		  CheckProceedRoutinePermission();
+  		  
   		  // Sync photos at the end. It takes time for the changes done to server
   		  // to propagate. If we keep these sync methods before updates, then
   		  // the changes would be synced to server, however, the server would
@@ -130,21 +156,38 @@ using FlickrNet;
   		  // would end up removing the changes, and only show them again at 
   		  // the next update.
   		  SyncDirtyPhotosToServer();
+  		  CheckProceedRoutinePermission();
+  		  
   		  SyncDeletedCommentsToServer();
+  		  CheckProceedRoutinePermission();
+  		  
   		  SyncDirtyCommentsToServer();
+  		  CheckProceedRoutinePermission();
   		  
   		  SyncNewAlbumsToServer();
+  		  CheckProceedRoutinePermission();
+  		  
   		  SyncDirtyAlbumsToServer();
         Gtk.Application.Invoke (delegate {
           DeskFlickrUI.GetInstance().UpdateToolBarButtons();
         });
+        CheckProceedRoutinePermission();
         
         SyncPhotosDeletedFromPools();
+        CheckProceedRoutinePermission();
+        
         SyncPhotosAddedToPools();
+        CheckProceedRoutinePermission();
+        
         SyncBlogPosts();
+        CheckProceedRoutinePermission();
         
   		  CheckPhotosToDownload();
+  		  CheckProceedRoutinePermission();
+  		  
   		  CheckPhotosToUpload();
+  		  CheckProceedRoutinePermission();
+  		  
   		  // Flickr server never catches up with updates soon. So, we'll 
   		  // do all the album updates required by photo deletion on our side, 
   		  // and then just flush them to server. Hope they spread around by 
@@ -154,8 +197,12 @@ using FlickrNet;
           DeskFlickrUI.GetInstance().RefreshLeftTreeView();
         });
   		} catch (Exception e) {
-  		  Console.WriteLine(e.Message);
-  		  Console.WriteLine(e.StackTrace);
+  		  if (!e.Message.Equals(ROUTINE_EXCEPTION_MSG)) {
+  		    Console.WriteLine(e.Message);
+  		    Console.WriteLine(e.StackTrace);
+  		  } else {
+  		    _stopSync = false;
+  		  }
   		}
 		  _isbusy = false;
 		  UpdateUIAboutConnection();
@@ -595,6 +642,8 @@ using FlickrNet;
 		  options.PerPage = 500;
 		  options.Page = 1;
 		  Photos photos = flickrObj.PhotosSearch(options);
+		  CheckProceedRoutinePermission();
+		  
 		  Gtk.Application.Invoke (delegate {
 		    DeskFlickrUI.GetInstance().SetLimitsProgressBar((int) photos.TotalPhotos);
 		  });
@@ -604,6 +653,7 @@ using FlickrNet;
 		    options.Page = curpage;
 		    photos = flickrObj.PhotosSearch(options);
 		    UpdatePhotos(photos.PhotoCollection, ref serverphotoids);
+		    CheckProceedRoutinePermission();
 		  }
 		  // Delete the photos not present on server.
 		  foreach (string photoid in 
@@ -974,6 +1024,7 @@ using FlickrNet;
 		    }
         DelegateIncrementProgressBar();
 		    PersistentInformation.GetInstance().DeleteEntryFromDownload(photoid);
+		    CheckProceedRoutinePermission();
 		  }
 		}
 		
@@ -1021,6 +1072,7 @@ using FlickrNet;
 		    Photo p = RetrievePhoto(newphotoid);
 		    if (p == null) continue;
 		    PersistentInformation.GetInstance().UpdatePhoto(p);
+		    CheckProceedRoutinePermission();
 		  }
 		}
 		
