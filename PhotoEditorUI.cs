@@ -584,7 +584,8 @@ using Glade;
 		  if (title.Length > 30) {
 		    title = title.Substring(0, 30) + "...";
 		  }
-		  label7.Markup = "<span weight='bold'>" + title + "</span>";
+		  label7.Markup = "<span weight='bold'>" + Utils.EscapeForPango(title) 
+		      + "</span>";
 		}
 		
 		private void PopulateComments(string photoid) {

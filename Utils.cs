@@ -60,13 +60,16 @@ using System.Text.RegularExpressions;
     }
     
     public static string EscapeForPango(string str) {
-      if (str == null)
+      /*
+			if (str == null)
 				return "";
 		  Regex r = new Regex("<[^>]+>");
 		  str = r.Replace(str, "");
 			str = str.Replace ("&", "&amp;");
 			str = str.Replace ("<", "&lt;");
 			return str;
+			*/
+			return GLib.Markup.EscapeText(str);
     }
     
     public static bool isImageFile(string filepath) {
