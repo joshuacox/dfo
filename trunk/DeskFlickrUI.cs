@@ -807,10 +807,28 @@ using Glade;
 		  return String.Format(
             "<span font_desc='Times 10'>{0}</span>", p.LicenseInfo);
 		}
-		    
+
+    private static string POPULATING_MSG = "Populating...";
+    private static string STOPPING_SYNC_MSG = "Stopping Sync...";
+
+    private System.Collections.Generic.IList<string> messagearray = null; 
     private void SetLabelPopup(bool isactivated, string message) {
+      if (messagearray == null) messagearray = 
+          new System.Collections.Generic.List<string>();
+      
       if (isactivated) {
-        popuplabel.Markup = "<span font_desc='Times Bold 12'>" + message + "</span>";
+        messagearray.Add(message);
+      } else {
+        messagearray.Remove(message);
+      }
+      
+      if (messagearray.Count > 0) {
+        string fullmessage = "";
+        foreach (string s in messagearray) {
+          fullmessage += s + "  ";
+        }
+        popuplabel.Markup = "<span font_desc='Times Bold 12'>" + fullmessage
+            + "</span>";
         if (popuplabel.Parent == null) eventbox6.Add(popuplabel);
         eventbox6.HeightRequest = 25;
         eventbox6.ShowAll();
@@ -822,10 +840,10 @@ using Glade;
 
 		private void SetActivatePhotosTreeView(bool isactivated) {
 	    if (!isactivated) {
-	      SetLabelPopup(true, "Populating...");
+	      SetLabelPopup(true, POPULATING_MSG);
 	      treeview2.Sensitive = false;
 	    } else {
-	      SetLabelPopup(false, "");
+	      SetLabelPopup(false, POPULATING_MSG);
 	      treeview2.Sensitive = true;
 	    }
 		}
@@ -1734,7 +1752,14 @@ using Glade;
   	public void SetSensitivityConnectionButtons(bool issensitive) {
   	  imagemenuitem2.Sensitive = issensitive;
       checkmenuitem3.Sensitive = issensitive;
-      syncbutton.Sensitive = issensitive;
+      if (issensitive) {
+        if (syncbutton.Label == "Cancel Sync") SetLabelPopup(false, STOPPING_SYNC_MSG);
+        syncbutton.StockId = Stock.Refresh;
+        syncbutton.Label = "Sync Now";
+      } else {
+        syncbutton.StockId = Stock.Stop;
+        syncbutton.Label = "Cancel Sync";
+      }
       connectbutton.Sensitive = issensitive;
     }
     
@@ -1747,6 +1772,12 @@ using Glade;
   	    SetLimitsProgressBar(0);
   	    SetProgressBarText("");
   	  } else { // Work ON-line.
+  	    if (syncbutton.Label == "Cancel Sync" 
+  	        && FlickrCommunicator.GetInstance().IsBusy) {
+  	      SetLabelPopup(true, STOPPING_SYNC_MSG);
+  	      FlickrCommunicator.GetInstance().DoStopSync();
+  	      return;
+  	    }
   	    if (_connthread != null) _connthread.Abort();
   	    _connthread = null;
   	    FlickrCommunicator comm = FlickrCommunicator.GetInstance();
