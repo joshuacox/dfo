@@ -654,25 +654,22 @@ using Mono.Data.SqliteClient;
 		
 		public void UpdateMetaInfoPhoto(Photo p) {
 		  lock (_photolock) {
-		  string safeTitle = p.Title.Replace("'", "''");
-		  string safeDesc = p.Description.Replace("'", "''");
 		  RunNonQuery(String.Format(
 		      "update photo set title='{0}', desc='{1}', license={2}, ispublic={3}"
-		      + ", isfriend={4}, isfamily={5} where id='{6}';", safeTitle, safeDesc,
+		      + ", isfriend={4}, isfamily={5} where id='{6}';", EscapeStr(p.Title),
+          EscapeStr(p.Description),
 		      p.License, p.IsPublic, p.IsFriend, p.IsFamily, p.Id));
 		  }
 		}
 		
 		public void InsertPhoto(Photo p) {
 		  lock (_photolock) {
-		  string safeTitle = p.Title.Replace("'", "''"); // try with \'
-		  string safeDesc = p.Description.Replace("'", "''");
 		  RunNonQuery(String.Format(
 		      "insert into photo (id, title, desc, license, ispublic, "
 		      + "isfriend, isfamily, lastupdate, dateposted) values('{0}','{1}','{2}',{3}"
 		      + ",{4},{5},{6},'{7}','{8}');",
-		       p.Id, safeTitle, safeDesc, p.License, p.IsPublic, p.IsFriend,
-		       p.IsFamily, p.LastUpdate, p.DatePosted));
+		       p.Id, EscapeStr(p.Title), EscapeStr(p.Description), p.License,
+           p.IsPublic, p.IsFriend, p.IsFamily, p.LastUpdate, p.DatePosted));
 		  }
 		  foreach (string tag in p.Tags) {
 		    InsertTag(p.Id, tag);
@@ -681,14 +678,12 @@ using Mono.Data.SqliteClient;
 		
 		public void InsertOriginalPhoto(Photo p) {
 			lock (_photolock) {
-		  string safeTitle = p.Title.Replace("'", "''"); // try with \'
-		  string safeDesc = p.Description.Replace("'", "''");
 		  RunNonQuery(String.Format(
 		      "insert into originalphoto (id, title, desc, license, ispublic, "
 		      + "isfriend, isfamily, lastupdate, tags) values('{0}','{1}','{2}',{3}"
 		      + ",{4},{5},{6},'{7}','{8}');",
-		       p.Id, safeTitle, safeDesc, p.License, p.IsPublic, p.IsFriend,
-		       p.IsFamily, p.LastUpdate, p.TagString));
+		       p.Id, EscapeStr(p.Title), EscapeStr(p.Description), p.License,
+           p.IsPublic, p.IsFriend, p.IsFamily, p.LastUpdate, p.TagString));
 		  }
 		}
 		
@@ -791,12 +786,10 @@ using Mono.Data.SqliteClient;
 		public void InsertComment(string photoid, string commentid,
 		                          string commenthtml, string username) {
 		  lock (_commentlock) {
-      string safecomment = commenthtml.Replace("'", "''");
-      string safeusername = username.Replace("'", "''");
       RunNonQuery(String.Format(
           "insert into comment (photoid, commentid, commenthtml, username)"
           + " values ('{0}','{1}','{2}','{3}');",
-          photoid, commentid, safecomment, safeusername));
+          photoid, commentid, EscapeStr(commenthtml), EscapeStr(username)));
 		  }
 		}
 		
@@ -813,12 +806,11 @@ using Mono.Data.SqliteClient;
 		public void UpdateComment(string photoid, string commentid, 
 		                          string commenthtml, bool isdirty) {
 		  lock (_commentlock) {
-		  string safecomment = commenthtml.Replace("'", "''");
 		  int dirty = isdirty ? 1 : 0;
 		  RunNonQuery(String.Format(
 		      "update comment set commenthtml='{0}', isdirty={1}"
 		      + " where photoid='{2}' and commentid='{3}';",
-		      safecomment, dirty, photoid, commentid));
+		      EscapeStr(commenthtml), dirty, photoid, commentid));
 		  }
 		}
 		
@@ -956,12 +948,10 @@ using Mono.Data.SqliteClient;
 		 */
 		public void InsertAlbum(Album a) {
 		  lock (_albumlock) {
-		  string safetitle = a.Title.Replace("'", "''");
-		  string safedesc = a.Desc.Replace("'", "''");
 		  RunNonQuery(String.Format(
 		      "insert into album (setid, title, desc, photoid) "
 		      + "values ('{0}','{1}','{2}',{3});",
-		      a.SetId, safetitle, safedesc, a.PrimaryPhotoid));
+		      a.SetId, EscapeStr(a.Title), EscapeStr(a.Desc), a.PrimaryPhotoid));
 		  }
 		}
 		
@@ -1379,7 +1369,7 @@ using Mono.Data.SqliteClient;
 		  lock (_poollock) {
 		  RunNonQuery(String.Format(
 		      "insert into pool (groupid, title) values('{0}', '{1}');",
-		      groupid, title));
+		      groupid, EscapeStr(title)));
 		  }
 		}
 		
@@ -1648,23 +1638,21 @@ using Mono.Data.SqliteClient;
 	  public void InsertEntryToBlog(BlogEntry blogentry) {
 	    if (HasBlogPhoto(blogentry.Blogid, blogentry.Photoid)) return;
 	    lock (_blogphotolock) {
-	    string safetitle = blogentry.Title.Replace("'", "''");
-	    string safedesc = blogentry.Desc.Replace("'", "''");
 	    RunNonQuery(String.Format(
 	        "insert into blogphoto (blogid, photoid, title, desc)"
 	        + " values ('{0}','{1}','{2}','{3}');",
-	        blogentry.Blogid, blogentry.Photoid, safetitle, safedesc));
+	        blogentry.Blogid, blogentry.Photoid, EscapeStr(blogentry.Title),
+          EscapeStr(blogentry.Desc)));
 	    }
 	  }
 	  
 	  public void UpdateEntryToBlog(BlogEntry blogentry) {
 	    lock (_blogphotolock) {
-	    string safetitle = blogentry.Title.Replace("'", "''");
-	    string safedesc = blogentry.Desc.Replace("'", "''");
 	    RunNonQuery(String.Format(
 	        "update blogphoto set title='{0}', desc='{1}'"
 	        + " where blogid='{2}' and photoid='{3}';",
-	        safetitle, safedesc, blogentry.Blogid, blogentry.Photoid));
+	        EscapeStr(blogentry.Title), EscapeStr(blogentry.Desc),
+          blogentry.Blogid, blogentry.Photoid));
 	    }
 	  }
 	  
@@ -1754,6 +1742,9 @@ using Mono.Data.SqliteClient;
       }
     }
     
+    private string EscapeStr(string str) {
+      return str.Replace("'", "''");
+    }
 		/*
 		 * Download table methods.
 		 */
@@ -1761,7 +1752,7 @@ using Mono.Data.SqliteClient;
 		  lock (_downloadlock) {
 		  string query = String.Format(
 		      "insert into download (photoid, foldername) values ('{0}', '{1}');",
-		      photoid, foldername);
+		      photoid, EscapeStr(foldername));
 		  RunNonQuery(query);
 		  }
 		}
@@ -1828,15 +1819,13 @@ using Mono.Data.SqliteClient;
 		// in the database.
 		public void InsertEntryToUpload(string filename) {
 		  if (!Utils.isImageFile(filename)) return;
-		  string safefilename = filename.Replace("'", "''");
-		  if (IsUploadEntryExists(safefilename)) return;
+		  if (IsUploadEntryExists(EscapeStr(filename))) return;
 		  System.IO.FileInfo finfo = new System.IO.FileInfo(filename);
 		  if (!finfo.Exists) {
 		    Console.WriteLine(filename + " doesn't exist");
 		    return;
 		  }
 		  
-		  string title = finfo.Name.Replace("'", "''");
 		  string desc = "Uploaded through <a href=''http://code.google.com/p/dfo''>"
 		                + "Desktop Flickr Organizer</a>.";
 		  string tags = "dfoupload";
@@ -1844,7 +1833,7 @@ using Mono.Data.SqliteClient;
 		  string query = String.Format(
 		      "insert into upload (filename, title, desc, tags)" 
 		      + " values ('{0}','{1}','{2}','{3}');",
-		      safefilename, title, desc, tags);
+		      EscapeStr(filename), EscapeStr(finfo.Name), desc, tags);
 		  RunNonQuery(query);
 		  }
 		}
@@ -1855,17 +1844,14 @@ using Mono.Data.SqliteClient;
 		      "select filename from upload where filename='{0}';", filename));
 		  }
 		}
-				
+		
 		public void UpdateInfoForUploadPhoto(Photo p) {
 		  lock (_uploadlock) {
-		  string safeFilename = p.Id.Replace("'", "''");
-		  string safeTitle = p.Title.Replace("'", "''");
-		  string safeDesc = p.Description.Replace("'", "''");
 		  RunNonQuery(String.Format(
 		      "update upload set title='{0}', desc='{1}', license={2}, ispublic={3}"
 		      + ", isfriend={4}, isfamily={5}, tags='{6}' where filename='{7}';", 
-		      safeTitle, safeDesc, p.License, p.IsPublic, p.IsFriend,
-		      p.IsFamily, p.TagString, safeFilename));
+		      EscapeStr(p.Title), EscapeStr(p.Description), p.License, p.IsPublic,
+          p.IsFriend, p.IsFamily, p.TagString, EscapeStr(p.Id)));
 		  }
 		}
 		

@@ -135,13 +135,13 @@ using FlickrNet;
   		  foreach (Album a in PersistentInformation.GetInstance().GetAlbums()) {
   		    if (PersistentInformation.GetInstance().IsAlbumNew(a.SetId)) continue;
   		    UpdatePhotosForAlbum(a);
-  		    Gtk.Application.Invoke (delegate {
-  		      if (DeskFlickrUI.GetInstance().IsAlbumTabSelected()) {
-  		        DeskFlickrUI.GetInstance().RefreshLeftTreeView();
-  		      }
-  		    });
   		    CheckProceedRoutinePermission();
   		  }
+        Gtk.Application.Invoke (delegate {
+  		    if (DeskFlickrUI.GetInstance().IsAlbumTabSelected()) {
+  		      DeskFlickrUI.GetInstance().RefreshLeftTreeView();
+  		    }
+  		  });
   		  
   		  UpdatePools();
   		  CheckProceedRoutinePermission();
