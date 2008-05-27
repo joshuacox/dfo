@@ -817,7 +817,9 @@ using Glade;
           new System.Collections.Generic.List<string>();
       
       if (isactivated) {
-        messagearray.Add(message);
+        if (!messagearray.Contains(message)) {
+          messagearray.Add(message);
+        }
       } else {
         messagearray.Remove(message);
       }
