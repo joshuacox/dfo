@@ -950,7 +950,7 @@ using Mono.Data.SqliteClient;
 		  lock (_albumlock) {
 		  RunNonQuery(String.Format(
 		      "insert into album (setid, title, desc, photoid) "
-		      + "values ('{0}','{1}','{2}',{3});",
+		      + "values ('{0}','{1}','{2}','{3}');",
 		      a.SetId, EscapeStr(a.Title), EscapeStr(a.Desc), a.PrimaryPhotoid));
 		  }
 		}
@@ -1026,7 +1026,7 @@ using Mono.Data.SqliteClient;
       if (!HasAlbum(setid)) throw new Exception();
       lock (_albumlock) {
       RunNonQuery(String.Format(
-          "update album set photoid={0} where setid='{1}';", photoid, setid));
+          "update album set photoid='{0}' where setid='{1}';", photoid, setid));
       }
 		}
 		
@@ -1903,14 +1903,17 @@ using Mono.Data.SqliteClient;
 		  }
 		}
 		
-		public void SaveAlbum(Album a) {
-		  bool isnew = IsAlbumNew(a.SetId);
+		public void SaveAlbum(Album a, bool isnew) {
+      // Note that this logic won't work for the albums which don't exist yet
+      // It would only work for the albums explicitly set to 'new'.
 		  DeleteAlbum(a.SetId);
 		  InsertAlbum(a);
 		  if (isnew) SetNewAlbum(a.SetId);
 		  if (!HasAlbumPhoto(a.SetId, a.PrimaryPhotoid)) {
 		    AddPhotoToAlbum(a.PrimaryPhotoid, a.SetId);
 		  }
+      // Remove the dirty bit, otherwise update would try to _sync_ this
+		  // fake album with the server.
 		  SetAlbumDirtyIfNotNew(a.SetId);
 		}
 		
