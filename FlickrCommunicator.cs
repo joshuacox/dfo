@@ -828,6 +828,10 @@ using FlickrNet;
 		    if (ismetachanged) {
 		      flickrObj.PhotosSetMeta(photo.Id, photo.Title, photo.Description);
 		    }
+        if (!photo.License.Equals(serverphoto.License)) {
+          Console.Error.WriteLine("License sync functionality is not yet present.");
+          // TODO: update the license info.
+        }
 		    // Sync Permissions.
 		    bool isvischanged = false;
 		    if (photo.IsPublic != serverphoto.IsPublic) isvischanged = true;

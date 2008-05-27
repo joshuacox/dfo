@@ -84,13 +84,7 @@ using Glade;
 		}
 		
 		public void OnSaveButtonClicked(object o, EventArgs args) {
-		  PersistentInformation.GetInstance().SaveAlbum(_album);
-		  if (_isnew) {
-		    PersistentInformation.GetInstance().SetNewAlbum(_album.SetId);
-		    // Remove the dirty bit, otherwise update would try to _sync_ this
-		    // fake album with the server.
-		    PersistentInformation.GetInstance().SetAlbumDirty(_album.SetId, false);
-		  }
+		  PersistentInformation.GetInstance().SaveAlbum(_album, _isnew);
 		  window3.Destroy();
 		  DeskFlickrUI.GetInstance().PopulateAlbums();
 		}
