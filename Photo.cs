@@ -49,6 +49,19 @@ using System.Collections;
 		  }
 		}
 		
+    public string PrettyPrint() {
+      ArrayList l = new ArrayList();
+      l.Add("id: " + id);
+      l.Add("title: " + title);
+      l.Add("license: " + license);
+      l.Add("public friend family: " + ispublic + " " + isfriend + " " + isfamily);
+      l.Add("last update: " + lastupdate);
+      l.Add("tags: " + TagString);
+      l.Add("description: " + desc);
+      
+      return Utils.GetDelimitedString(l, ">  <");
+    }
+  
 		public bool isMetaDataEqual(Photo p) {
 		  if (p == null) return false;
 		  bool isequal = true;

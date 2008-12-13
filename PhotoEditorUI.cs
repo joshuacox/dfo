@@ -875,14 +875,23 @@ using Glade;
   		      p.SortTags();
   		      PersistentInformation.GetInstance().UpdateTagsForPhoto(p);
   		    }
+          
   		    // Get the originally retrieved photo from server.
   		    Photo originalcleanphoto = PersistentInformation.GetInstance().GetOriginalPhoto(p.Id);
-  		    if (p.isEqual(originalcleanphoto)) {
+  		    if (originalcleanphoto == null || p.isEqual(originalcleanphoto)) {
   		      PersistentInformation.GetInstance().SetPhotoDirty(p.Id, false);
   		    }
   		    else if (ischanged) {
   		      PersistentInformation.GetInstance().SetPhotoDirty(p.Id, true);
-  		    }
+  		    } else {
+            Console.Error.WriteLine(
+                "Inconsistent State: Photo seems to be different than stored"
+                + " in server, but the metadata and tags are unchanged.");
+                    Console.Out.WriteLine("=== Local photo ===");
+            Console.Out.WriteLine(p.PrettyPrint());
+            Console.Out.WriteLine("=== Server Photo ===");
+            Console.Out.WriteLine(originalcleanphoto.PrettyPrint());
+          }
   		  }
 		  }
 		  window2.Destroy();

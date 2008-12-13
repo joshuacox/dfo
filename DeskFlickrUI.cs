@@ -1440,7 +1440,7 @@ using Glade;
 		  streambutton = new ToggleToolButton(Stock.SelectAll);
 		  streambutton.IsImportant = true;
 		  streambutton.Sensitive = true;
-		  streambutton.Label = "Stream";
+		  streambutton.Label = "Photostream";
 		  streambutton.Clicked += new EventHandler(OnStreamButtonClicked);
 		  toolbar1.Insert(streambutton, -1);
 		  
