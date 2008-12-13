@@ -40,6 +40,7 @@ using Mono.Data.SqliteClient;
 		    System.Environment.GetEnvironmentVariable("HOME"), ".desktopflickr");
 		private static string THUMBNAIL_DIR = System.IO.Path.Combine(HOME, "thumbnails");
 		private static string SMALL_IMAGE_DIR = System.IO.Path.Combine(HOME, "small_images");
+    private static int NUM_SHARDS = 37;
     private static string DB_PATH = "URI=file:" + HOME + "/sqlite.db,version=3,busy_timeout=30000";
     
     private static string CREATE_PHOTO_TABLE = 
@@ -168,6 +169,12 @@ using Mono.Data.SqliteClient;
       Utils.EnsureDirectoryExists(HOME);
       Utils.EnsureDirectoryExists(THUMBNAIL_DIR);
       Utils.EnsureDirectoryExists(SMALL_IMAGE_DIR);
+      // Shard the photos, so they're stored in 37 directories, instead of one.
+      for (int i = 0; i < NUM_SHARDS; ++i) {
+        string s = String.Format("{0:00}", i);
+        Utils.EnsureDirectoryExists(System.IO.Path.Combine(THUMBNAIL_DIR, s));
+        Utils.EnsureDirectoryExists(System.IO.Path.Combine(SMALL_IMAGE_DIR, s));
+      }
       
       // Attempt creation of tables. If the table exists, the command
       // execution will throw an exception. Dirty way, but had to be done.
@@ -315,7 +322,11 @@ using Mono.Data.SqliteClient;
 		 * Photo retrieval and setting methods.
 		 */
 		private string GetThumbnailPath(string photoid) {
-		  return String.Format("{0}/{1}.png", THUMBNAIL_DIR, photoid);
+      string picname = photoid + ".png";
+      string subdir = System.IO.Path.Combine(THUMBNAIL_DIR,
+          String.Format("{0:00}",
+          Convert.ToInt32(photoid.Substring(photoid.Length - 2)) % NUM_SHARDS));
+		  return System.IO.Path.Combine(subdir, picname);
 		}
 		
 		// Retrive the thumbnail of the photo.
@@ -362,7 +373,11 @@ using Mono.Data.SqliteClient;
 		}
 		
 		private string GetSmallImagePath(string photoid) {
-		  return String.Format("{0}/{1}.png", SMALL_IMAGE_DIR, photoid);
+      string picname = photoid + ".png";
+      string subdir = System.IO.Path.Combine(SMALL_IMAGE_DIR,
+          String.Format("{0:00}",
+          Convert.ToInt32(photoid.Substring(photoid.Length - 2)) % NUM_SHARDS));
+		  return System.IO.Path.Combine(subdir, picname);
 		}
 		
 		// Retrive the small size image to be shown when editing of photos.

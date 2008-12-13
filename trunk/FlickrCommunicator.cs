@@ -817,15 +817,12 @@ using FlickrNet;
         DelegateIncrementProgressBar();
 		    Photo serverphoto = RetrievePhoto(photo.Id);
 		    bool ismodified = !serverphoto.LastUpdate.Equals(photo.LastUpdate);
-		    if (ismodified) {
-          DeskFlickrUI.GetInstance().AddServerPhoto(serverphoto);
-		      continue;
-		    }
+
 		    // Sync meta information.
 		    bool ismetachanged = false;
 		    if (!photo.Title.Equals(serverphoto.Title)) ismetachanged = true;
 		    if (!photo.Description.Equals(serverphoto.Description)) ismetachanged = true;
-		    if (ismetachanged) {
+		    if (ismetachanged && !ismodified) {
 		      flickrObj.PhotosSetMeta(photo.Id, photo.Title, photo.Description);
 		    }
         if (!photo.License.Equals(serverphoto.License)) {
@@ -837,7 +834,7 @@ using FlickrNet;
 		    if (photo.IsPublic != serverphoto.IsPublic) isvischanged = true;
 		    if (photo.IsFriend != serverphoto.IsFriend) isvischanged = true;
 		    if (photo.IsFamily != serverphoto.IsFamily) isvischanged = true;
-		    if (isvischanged) {
+		    if (isvischanged && !ismodified) {
 		      // TODO: Need to add ways to set the comment and add meta permissions.
 		      flickrObj.PhotosSetPerms(photo.Id, photo.IsPublic, photo.IsFriend,
 		                            photo.IsFamily, PermissionComment.Everybody, 
@@ -845,9 +842,16 @@ using FlickrNet;
 		    }
 		    // Sync tags as well.
 		    bool istagschanged = !photo.IsSameTags(serverphoto.Tags);
-		    if (istagschanged) {
+		    if (istagschanged && !ismodified) {
 		      flickrObj.PhotosSetTags(photo.Id, photo.TagString);
 		    }
+        // If the photo has been modified both at the server, and in dfo,
+        // store it as a conflict.
+        if (ismodified && 
+            (ismetachanged || isvischanged || istagschanged)) {
+          DeskFlickrUI.GetInstance().AddServerPhoto(serverphoto);
+          continue;
+        }
 		    // Photo has been synced, now remove the dirty bit.
 		    PersistentInformation.GetInstance().SetPhotoDirty(photo.Id, false);
 		  }
@@ -1017,8 +1021,9 @@ using FlickrNet;
 		      continue;
 		    }
 		    string safetitle = p.Title.Replace("/", "");
+        string extension = sourceurl.Substring(sourceurl.LastIndexOf('.'));
 		    string filename = String.Format(
-		          "{0}/{1}_{2}.jpg", foldername, safetitle, p.Id);
+		          "{0}/{1}_{2}{3}", foldername, safetitle, p.Id, extension);
         Utils.IfExistsDeleteFile(filename);
         try {
 		      webclient.DownloadFile(sourceurl, filename);
